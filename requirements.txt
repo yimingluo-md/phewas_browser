@@ -1,0 +1,5 @@
+# Keep the bundled Mac and Windows runtimes reproducible. Update these pins
+# deliberately, then rebuild both platform runtimes and run the smoke tests.
+duckdb==1.5.5
+fastapi==0.141.1
+uvicorn==0.52.4
