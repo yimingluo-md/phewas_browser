@@ -14,7 +14,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(BASE, "data", "phewas.duckdb")
+# IEI_PHEWAS_DB lets tests and future launchers point the server at another database.
+DB = os.environ.get("IEI_PHEWAS_DB") or os.path.join(BASE, "data", "phewas.duckdb")
 
 app = FastAPI(title="IEI PheWAS Browser")
 
@@ -31,7 +32,7 @@ def q(sql, params=None):
     out = []
     for r in rows:
         d = {}
-        for k, v in zip(cols, r):
+        for k, v in zip(cols, r, strict=True):
             if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 v = None
             d[k] = v
@@ -86,7 +87,7 @@ def search(term: str = Query(..., min_length=1)):
                      "label": f"{r['rsid']} — {r['name']} ({r['gene']})"} for r in rs_hits]
 
     vterm = term[3:] if term.lower().startswith("chr") else term
-    if vterm and vterm[0].isdigit() or vterm[:1].upper() in ("X", "Y"):
+    if (vterm and vterm[0].isdigit()) or vterm[:1].upper() in ("X", "Y"):
         v_hits = q(
             "SELECT name, gene FROM variant_index WHERE name LIKE ? || '%' ORDER BY name LIMIT 10",
             [vterm])

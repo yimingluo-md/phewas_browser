@@ -1,6 +1,6 @@
 # PheWAS Browser — Mac App Architecture & Migration Plan
 
-*Status: proposal v1 · 2026-09-07 · author: Yiming Luo (drafted with Claude)*
+*Status: v1.1 — decisions confirmed, Phase 0 in progress · 2026-09-07 · author: Yiming Luo (drafted with Claude)*
 
 ## 0. Where we are
 
@@ -258,7 +258,7 @@ Each phase ends with something usable; the existing launchers keep working until
 
 | Phase | Deliverable | Key work | Effort* |
 |---|---|---|---|
-| **0 — Foundations** (this week) | Private repo, CI running lint/tests on a synthetic fixture | Done today: git + `.gitignore`. Next: `pyproject.toml`, `uv`, `ruff`, pytest skeleton, synthetic dataset generator, `legacy/` move | 1–2 days |
+| **0 — Foundations** | Private repo, CI running lint/tests on a synthetic fixture | git + `.gitignore`; `pyproject.toml` + `uv.lock`; `ruff`; pytest suite (pipeline + API) on a synthetic dataset generator; CI. Today's launchers stay at the repo root (the `.app` resolves `launch.sh` relative to itself) until Phase 3. | 1–2 days ✅ |
 | **1 — Core extraction** | `phewas import …` CLI builds a dataset directory from the *existing* files via the built-in profile; `app.py` serves whichever dataset is chosen. UI unchanged. | `phewas_core` package; long-format schema + migrations; dataset registry/manifest; importer job with progress; annotation field registry; ported query layer with tests. Benchmark long vs wide on the real 70 M-row file. | 1.5–2 wk |
 | **2 — Multi-dataset web UI** | Library page, dataset switcher, import wizard (paths typed/pasted), progress, cohort-dynamic columns, field-driven variant page, token auth. Still launched via `launch.sh`. | Vite + TS migration of `app.js`; new API v1; SSE progress; validation report UI | 2 wk |
 | **3 — Native shell** | Unsigned `PheWAS Browser.app` for arm64 + Intel and a Windows build, sidecar auto-start, native file dialogs and menus, Application Support storage, clean quit | Tauri project; PyInstaller sidecar; port/token handoff; single-instance; error surfaces (sidecar crash → dialog + log) | 1.5 wk |
@@ -267,13 +267,15 @@ Each phase ends with something usable; the existing launchers keep working until
 
 \*Effort is focused development time for one person familiar with the code; calendar time will be longer.
 
-## 4. Decisions to confirm before Phase 1
+## 4. Decisions (confirmed 2026-09-07)
 
-1. **Long-format `assoc`** (recommended) vs `MAP` column vs keep-wide-with-metadata — decided by the Phase 1 benchmark.
-2. **Dataset immutability + versioning** (recommended: keep previous version until user deletes) vs in-place replace.
-3. **Frontend framework**: port as TypeScript modules first (recommended), adopt Svelte for the wizard/library screens.
-4. **Public releases repo** for the updater vs institutional HTTPS host.
-5. **Minimum macOS**: 12 (Monterey) lets us use current WKWebView features; 11 keeps parity with today's Intel runtime.
+| # | Decision | Outcome |
+|---|---|---|
+| 1 | Long-format `assoc` vs `MAP` column vs keep-wide-with-metadata | **Decided by the Phase 1 benchmark** on the real 70 M-row file; long format is the default hypothesis. This concerns only the app's internal storage — input files keep their current wide layout. |
+| 2 | Dataset immutability + versioning vs in-place replace | **Keep previous version until the user deletes it.** |
+| 3 | Frontend framework | **Port `app.js` as TypeScript modules first**; adopt Svelte for the wizard/library screens if and when their complexity warrants it. |
+| 4 | Where the updater downloads releases from | **This repository will be made public at the first release**, so the updater points at its GitHub Releases (`latest.json` + signed installers). The app contains no data, so nothing RUO becomes public; the RUO datasets remain outside the repo. |
+| 5 | Minimum macOS | **12 (Monterey).** |
 
 ## 5. Risks and mitigations
 
@@ -289,6 +291,6 @@ Each phase ends with something usable; the existing launchers keep working until
 
 ## 6. Immediate next steps
 
-1. Confirm the four decisions in §4 (or accept the recommendations).
-2. Phase 0: add `pyproject.toml`, `uv.lock`, `ruff`, pytest, `tests/fixtures/make_synthetic.py`, `.github/workflows/ci.yml`; move today's launchers to `legacy/`.
+1. ~~Confirm the decisions in §4~~ done.
+2. ~~Phase 0~~ done: `pyproject.toml`, `uv.lock`, `ruff`, pytest, `tests/fixtures/make_synthetic.py`, `.github/workflows/ci.yml`.
 3. Phase 1 spike (1 day): unpivot the real sumstats into the long schema with DuckDB and time the variant/gene queries — this settles decision §4.1 before any further code is written.

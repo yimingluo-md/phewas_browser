@@ -1,0 +1,45 @@
+[project]
+name = "phewas-browser"
+version = "0.1.0"
+description = "Local browser for variant-level PheWAS summary statistics (FastAPI + DuckDB)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary — Research Use Only" }
+authors = [{ name = "Yiming Luo", email = "yl3232@cumc.columbia.edu" }]
+dependencies = [
+    "duckdb==1.5.5",
+    "fastapi==0.141.1",
+    "uvicorn==0.52.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx2>=2.0",        # FastAPI TestClient transport (starlette >= 1.6)
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.uv]
+# The bundled runtimes are built from requirements.lock.txt; keep both in step.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error::DeprecationWarning:phewas.*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["macos", "windows", "dist", "static", "legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "N", "RUF"]
+ignore = ["E501"]  # long SQL strings
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["packages", "tests"]
+ignore_missing_imports = true

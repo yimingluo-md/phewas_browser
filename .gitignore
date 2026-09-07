@@ -26,3 +26,12 @@ windows/python/
 # Built distributables and the compiled AppleScript applet wrapper
 dist/
 *.app/
+
+# Toolchains / envs
+.venv/
+node_modules/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+tests/fixtures/_generated/

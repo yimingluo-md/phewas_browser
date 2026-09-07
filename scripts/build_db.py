@@ -10,19 +10,21 @@ One-time build. Tables produced:
   gene_summary   per gene: variant count, top hit                          (drives home page)
   rsid_map       rsID -> variant                                           (drives search)
 """
-import duckdb
+import argparse
 import os
-import sys
 import time
+
+import duckdb
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "data")
-DB = os.path.join(DATA, "phewas.duckdb")
-TMP = os.path.join(DATA, "duckdb_tmp")
 
-SUMSTATS = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz"
-ANNOTATION = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv"
-PHECODE_CSV = os.path.join(DATA, "phecode_definitions1.2.csv")
+# Defaults reproduce the original IEI build; every path can be overridden on the
+# command line so the same script builds test fixtures and future datasets.
+DEFAULT_DB = os.path.join(DATA, "phewas.duckdb")
+DEFAULT_SUMSTATS = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz"
+DEFAULT_ANNOTATION = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv"
+DEFAULT_PHECODE_CSV = os.path.join(DATA, "phecode_definitions1.2.csv")
 
 SUMSTATS_TYPES = {
     "Name": "VARCHAR", "Chr": "VARCHAR", "Pos": "BIGINT", "Ref": "VARCHAR", "Alt": "VARCHAR",
@@ -43,13 +45,30 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def main():
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--sumstats", default=DEFAULT_SUMSTATS, help="wide per-cohort sumstats TSV(.gz)")
+    ap.add_argument("--annotation", default=DEFAULT_ANNOTATION, help="VEP annotation TSV")
+    ap.add_argument("--phecodes", default=DEFAULT_PHECODE_CSV, help="phecode definitions CSV")
+    ap.add_argument("--out", default=DEFAULT_DB, help="output DuckDB file (replaced if it exists)")
+    ap.add_argument("--memory-limit", default="16GB", help="DuckDB memory_limit (e.g. 4GB)")
+    ap.add_argument("--quiet", action="store_true", help="suppress progress output")
+    return ap.parse_args(argv)
+
+
+def build(sumstats, annotation, phecode_csv, db, memory_limit="16GB", quiet=False):
+    """Build `db` from the three inputs. Returns a dict of sanity-check counts."""
+    global log
+    if quiet:
+        log = lambda msg: None  # noqa: E731
+    SUMSTATS, ANNOTATION, PHECODE_CSV, DB = sumstats, annotation, phecode_csv, db  # noqa: N806 (legacy names)
+    TMP = os.path.join(os.path.dirname(os.path.abspath(DB)), "duckdb_tmp")  # noqa: N806
     os.makedirs(TMP, exist_ok=True)
     if os.path.exists(DB):
         os.remove(DB)
     con = duckdb.connect(DB)
     con.execute(f"SET temp_directory='{TMP}'")
-    con.execute("SET memory_limit='16GB'")
+    con.execute(f"SET memory_limit='{memory_limit}'")
     con.execute("SET preserve_insertion_order=false")
 
     # ---------------- phecode definitions ----------------
@@ -182,7 +201,7 @@ def main():
     log(f"  {n_ann} (variant, gene) annotation rows")
 
     # ---------------- sumstats ----------------
-    log("Ingesting sumstats (70.7M rows, this is the slow step)...")
+    log("Ingesting sumstats (this is the slow step)...")
     t0 = time.time()
     types_sql = "{" + ", ".join(f"'{k}': '{v}'" for k, v in SUMSTATS_TYPES.items()) + "}"
     con.execute(f"""
@@ -262,6 +281,7 @@ def main():
 
     # ---------------- report ----------------
     log("Sanity checks...")
+    counts = {}
     for label, q in [
         ("assoc rows", "SELECT count(*) FROM assoc"),
         ("variants in assoc", "SELECT count(*) FROM variant_index"),
@@ -272,10 +292,17 @@ def main():
          "(SELECT 1 FROM annotation a WHERE a.name=v.name AND a.gene=v.gene)"),
         ("rsIDs", "SELECT count(*) FROM rsid_map"),
     ]:
-        log(f"  {label}: {con.sql(q).fetchone()[0]}")
+        counts[label] = con.sql(q).fetchone()[0]
+        log(f"  {label}: {counts[label]}")
 
     con.close()
     log(f"Done. DB size: {os.path.getsize(DB)/1e9:.2f} GB -> {DB}")
+    return counts
+
+
+def main(argv=None):
+    a = parse_args(argv)
+    build(a.sumstats, a.annotation, a.phecodes, a.out, memory_limit=a.memory_limit, quiet=a.quiet)
 
 
 if __name__ == "__main__":
