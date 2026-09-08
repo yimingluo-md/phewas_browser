@@ -34,10 +34,11 @@ def test_annotation_one_row_per_variant_gene_and_mane_preferred(synthetic, con):
     # the legacy pipeline also keeps VEP rows without a gene symbol (never joined); ignore them here
     n = con.sql("SELECT count(*) FROM annotation WHERE gene IS NOT NULL AND gene <> '-'").fetchone()[0]
     assert n == len(synthetic["variants"])
-    assert con.sql("SELECT count(*) FROM annotation WHERE mane_select IS NULL").fetchone()[0] == 0
+    real = "gene IS NOT NULL AND gene <> '-'"
+    assert con.sql(f"SELECT count(*) FROM annotation WHERE {real} AND mane_select IS NULL").fetchone()[0] == 0
     assert (
         con.sql(
-            "SELECT count(*) FROM annotation WHERE consequence = 'intron_variant' AND impact = 'MODIFIER' AND hgvsc IS NULL"
+            f"SELECT count(*) FROM annotation WHERE {real} AND consequence = 'intron_variant' AND impact = 'MODIFIER' AND hgvsc IS NULL"
         ).fetchone()[0]
         == 0
     ), "the non-MANE transcript row was picked"
