@@ -57,7 +57,10 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
   const cohorts: Cohort[] = meta.cohorts;
   const primary = cohorts.find((c) => c.primary) ?? cohorts[0]!;
   const others = cohorts.filter((c) => c.id !== primary.id);
-  const stats = TABLE_STATS.filter((s) => meta.statistics.includes(s.stat));
+  const CORE = new Set<Stat>(["or", "p", "cases", "case_carriers", "controls", "ctrl_carriers"]);
+  const allStats = TABLE_STATS.filter((s) => meta.statistics.includes(s.stat));
+  const extraStats = allStats.filter((s) => !CORE.has(s.stat));
+  let stats = allStats.filter((s) => CORE.has(s.stat));
   const nTests = assoc.length;
   const bonf = nTests ? 0.05 / nTests : null;
   const ids = rsids(ann["existing_variation"]);
@@ -120,6 +123,7 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
       <div class="toolbar">
         <h2 style="margin:0">Associations</h2>
         ${others.map((c) => `<label class="chk" style="margin-left:14px"><input type="checkbox" id="t-${esc(c.id)}"> ${esc(c.label)} columns</label>`).join("")}
+        ${extraStats.length ? `<label class="chk"><input type="checkbox" id="t-extra"> ${extraStats.map((s) => esc(s.label)).join(", ")}</label>` : ""}
         <input type="text" id="a-text" placeholder="filter phenotype…" class="inline-input">
         <select id="a-cat"><option value="">all categories</option></select>
         <label class="chk"><input type="checkbox" id="a-sig"> P &lt; 0.05 only</label>
@@ -141,11 +145,11 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
   const flat: Flat[] = assoc.map((a) => {
     const row: Flat = { _a: a, trait: a.trait, description: a.description, category: a.category,
       source: Object.keys(a.cohorts).filter((c) => c !== primary.id || cohorts.length === 1).join("+") };
-    for (const c of cohorts) for (const s of stats) row[key(c.id, s.stat)] = a.cohorts[c.id]?.[s.stat] ?? null;
+    for (const c of cohorts) for (const s of allStats) row[key(c.id, s.stat)] = a.cohorts[c.id]?.[s.stat] ?? null;
     return row;
   });
   const state: SortState = { key: key(primary.id, "p"), dir: 1, page: 0, per: 50 };
-  const numeric = new Set(cohorts.flatMap((c) => stats.map((s) => key(c.id, s.stat))));
+  const numeric = new Set(cohorts.flatMap((c) => allStats.map((s) => key(c.id, s.stat))));
   let filtered = flat;
 
   const applyFilters = () => {
@@ -166,6 +170,7 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
 
   const draw = () => {
     const shown = [primary, ...others.filter((c) => checked(`t-${c.id}`))];
+    stats = extraStats.length && checked("t-extra") ? allStats : allStats.filter((s) => CORE.has(s.stat));
     const rows = sortRows(filtered, state.key, state.dir, numeric.has(state.key));
     const start = state.page * state.per;
     const pageRows = rows.slice(start, start + state.per);
@@ -199,12 +204,13 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
 
   bindSort(el("assoc-table").querySelector("thead")!, state, numeric, draw);
   others.forEach((c) => el(`t-${c.id}`).addEventListener("change", draw));
+  if (extraStats.length) el("t-extra").addEventListener("change", draw);
   ["a-cat", "a-sig"].forEach((id) => el(id).addEventListener("change", applyFilters));
   el("a-text").addEventListener("input", applyFilters);
   bindPager("a", state, draw);
   el("a-csv").onclick = () => {
-    const cols = ["trait", "description", "category", "source", ...cohorts.flatMap((c) => stats.map((s) => key(c.id, s.stat)))];
-    const headers = ["trait", "description", "category", "cohorts", ...cohorts.flatMap((c) => stats.map((s) => `${s.stat}_${c.id}`))];
+    const cols = ["trait", "description", "category", "source", ...cohorts.flatMap((c) => allStats.map((s) => key(c.id, s.stat)))];
+    const headers = ["trait", "description", "category", "cohorts", ...cohorts.flatMap((c) => allStats.map((s) => `${s.stat}_${c.id}`))];
     downloadCSV(`${name.replace(/:/g, "_")}_${gene}_phewas.csv`, cols, filtered, headers);
   };
   applyFilters();

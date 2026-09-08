@@ -36,10 +36,11 @@ export function renderHeader(): void {
   if (sw) sw.onchange = () => go(href.home(sw.value));
   bindSearch();
 
-  const notes = entry?.notes || "Research Use Only. Contains sensitive data — do not disseminate.";
+  const notes = entry?.notes || "Research Use Only — contains sensitive data; do not disseminate.";
   const cohorts = entry ? entry.cohorts.map((c) => c.label).join(" + ") : "";
+  const ruo = /research use only/i.test(notes) ? esc(notes) : `<b>Research Use Only.</b> ${esc(notes)}`;
   $footer.innerHTML = `
-    <div class="ruo-line"><b>Research Use Only.</b> ${esc(notes)}</div>
+    <div class="ruo-line">${ruo}</div>
     <span>${entry ? `${esc(entry.name)} · ${esc(cohorts)} · ${esc(entry.dictionary.label)} · ` : ""}Developed by Yiming Luo</span>`;
 }
 

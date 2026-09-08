@@ -171,8 +171,8 @@ function renderProgress($app: HTMLElement, job: Job): void {
       const i = order.indexOf(li.dataset.step!);
       li.classList.toggle("done", j.status === "done" || i < idx);
       li.classList.toggle("active", i === idx && j.status === "running");
-      if (i === idx) li.querySelector(".step-msg")!.textContent =
-        j.total > 1 ? `${fmtNum(j.done)} / ${fmtNum(j.total)} · ${j.message}` : j.message;
+      if (i === idx) li.querySelector(".step-msg")!.textContent = j.status === "done" && step === "done" ? ""
+        : j.total > 1 ? `${fmtNum(j.done)} / ${fmtNum(j.total)} · ${j.message}` : j.message;
     });
     const frac = j.status === "done" ? 1 : j.total > 1 ? j.done / j.total : idx >= 0 ? idx / order.length : 0;
     el("bar").style.width = `${Math.round(frac * 100)}%`;
