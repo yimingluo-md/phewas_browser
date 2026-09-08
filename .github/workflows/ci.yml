@@ -30,3 +30,40 @@ jobs:
         run: uv run mypy
       - name: Tests (synthetic fixture only — no real data in CI)
         run: uv run pytest -q
+
+  web:
+    name: frontend build + browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Build frontend
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+      - name: Synthetic dataset + server
+        run: |
+          uv sync --locked --python 3.12
+          uv run python tests/fixtures/make_synthetic.py /tmp/syn --variants-per-gene 40 --traits 120
+          uv run phewas --home /tmp/e2e import /tmp/syn/sumstats.tsv.gz --annotation /tmp/syn/annotation.tsv \
+            --name "Synthetic IEI demo" --build GRCh38 --memory-limit 1GB --no-hash --quiet
+          PHEWAS_HOME=/tmp/e2e PHEWAS_TOKEN=e2etoken nohup uv run phewas-server --port 8555 --no-open > /tmp/server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8555/api/health && break; sleep 1; done
+      - name: Browser smoke test
+        working-directory: apps/web
+        run: |
+          npx playwright install --with-deps chromium
+          SYN_DIR=/tmp/syn npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots
+          path: apps/web/e2e/shots

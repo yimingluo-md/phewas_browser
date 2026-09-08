@@ -1,0 +1,20 @@
+{
+  "name": "phewas-browser-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/plotly.js-dist-min": "2.3.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  },
+  "dependencies": {
+    "plotly.js-dist-min": "3.7.0"
+  }
+}

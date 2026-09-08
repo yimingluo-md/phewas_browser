@@ -3,7 +3,28 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased] — Phase 1: core extraction
+## [Unreleased] — Phase 2: multi-dataset web UI
+
+### Added
+- `packages/phewas_server`: FastAPI API v1 — dataset-scoped routes, per-launch bearer token on a
+  random loopback port, library management (current/rename/remove), import inspection, background
+  import jobs with SSE progress and cancel, a file-picker listing, and serving of the built frontend.
+  `phewas serve` / `phewas-server` print the tokenised URL and open it.
+- `apps/web`: the frontend rewritten in TypeScript (Vite, no framework). Cohort columns, the
+  Manhattan plot's cohort, annotation cards, gene-table columns and filters are all rendered from
+  the dataset's manifest and field registry — nothing about AoU/UKBB or specific scores is hard-coded.
+  New screens: Library (switch, make current, rename, remove), Import wizard (browse → detected
+  layout & cohorts → preview → live progress → open), Dataset details (manifest, sources with
+  sha256, warnings, import log). Plotly loads lazily on the first variant page.
+- Browser smoke test (`apps/web/e2e/smoke.mjs`, Playwright) covering every screen; runs in CI
+  against a synthetic dataset with screenshots as artifacts. 11 server tests.
+
+### Changed
+- `phewas serve` now runs the new server and UI. The legacy `app.py` + `static/` path and the
+  `launch.sh` / `.app` launcher are unchanged and still serve the old UI on either database; they
+  are retired in Phase 3 together with the bundled-runtime packaging.
+
+## [0.3.0] — 2026-09-08 — Phase 1: core extraction
 
 ### Added
 - `packages/phewas_core`: the new engine, no web dependencies.

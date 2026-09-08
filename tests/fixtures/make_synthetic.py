@@ -27,7 +27,9 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-PHECODE_CSV = os.path.join(ROOT, "data", "phecode_definitions1.2.csv")
+PHECODE_CSV = os.path.join(
+    ROOT, "packages", "phewas_core", "phewas_core", "builtin", "dictionaries", "phecode_definitions1.2.csv"
+)
 
 GENES = [  # (gene, chrom, start) — fictional coordinates
     ("GENEA", "1", 1_000_000),

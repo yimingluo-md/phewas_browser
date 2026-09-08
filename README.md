@@ -90,7 +90,19 @@ Then open <http://localhost:8555>.
 - Gene-page search accepts protein notation in both forms (`Arg158Gln` or `R158Q`);
   1-letter HGVSp is also shown in tables and CSV exports (`hgvsp_short`).
 
-## Importing a dataset (new pipeline)
+## The new browser (Phase 2)
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"   # uv, installed once with: curl -LsSf https://astral.sh/uv/install.sh | sh
+cd ~/phewas_browser && uv sync
+uv run phewas serve                     # starts the server on a random port and opens the UI
+```
+
+The frontend must be built once (`cd apps/web && npm ci && npm run build`; needs Node 22) —
+`phewas serve` tells you if it is missing. Datasets are imported from the UI (**Import…**)
+or from the command line, see below; several can be kept side by side and switched in the header.
+
+## Importing a dataset from the command line
 
 The `phewas` command builds a self-contained dataset from a sumstats file and stores it in
 the dataset library (`~/Library/Application Support/PheWAS Browser`, override with
