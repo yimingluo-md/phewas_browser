@@ -300,3 +300,37 @@ def test_symbolless_vep_rows_are_ignored(synthetic):
     )
     assert con.execute("SELECT count(*) FROM annotation").fetchone()[0] == len(synthetic["variants"])
     con.close()
+
+
+def test_nonfinite_statistics_become_missing_and_are_reported(synthetic):
+    """REGENIE writes Inf odds ratios for diverged fits; the legacy DB kept +Inf, the new schema stores NULL."""
+    with gzip.open(synthetic["sumstats"], "rt") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        i = header.index("Meta_OR")
+        n_inf = sum(1 for line in f if line.split("\t")[i] == "Inf")
+    assert n_inf > 0, "fixture should contain Inf odds ratios"
+    con = duckdb.connect(synthetic["core_db"], read_only=True)
+    assert (
+        con.execute('SELECT count(*) FROM assoc WHERE NOT isfinite("or") OR NOT isfinite(p)').fetchone()[0]
+        == 0
+    )
+    assert con.execute("SELECT count(*) FROM variant_index WHERE NOT isfinite(top_or)").fetchone()[0] == 0
+    con.close()
+    m = synthetic["import_result"].manifest
+    assert any("non-finite" in w and "Meta_OR" in w for w in m.warnings), m.warnings
+
+
+def test_top_or_is_the_top_traits_own_or_even_when_missing(synthetic):
+    con = duckdb.connect(synthetic["core_db"], read_only=True)
+    bad = con.execute("""SELECT count(*) FROM variant_index v JOIN assoc a
+                         ON a.variant_id = v.variant_id AND a.gene = v.gene AND a.trait = v.top_trait AND a.cohort = 'META'
+                         WHERE a."or" IS DISTINCT FROM v.top_or""").fetchone()[0]
+    assert bad == 0
+    # the fixture has top hits with a diverged (missing) OR, so this is not vacuous
+    assert (
+        con.execute(
+            "SELECT count(*) FROM variant_index WHERE top_or IS NULL AND min_p IS NOT NULL"
+        ).fetchone()[0]
+        > 0
+    )
+    con.close()

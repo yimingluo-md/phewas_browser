@@ -48,14 +48,26 @@ def main() -> int:
         nonlocal fails
         status = "OK  " if n_diff == 0 else "DIFF"
         fails += n_diff != 0
-        print(f"{status} {label}{'' if n_diff == 0 else f': {n_diff} differences'}{(' — ' + detail) if detail else ''}")
+        print(
+            f"{status} {label}{'' if n_diff == 0 else f': {n_diff} differences'}{(' — ' + detail) if detail else ''}"
+        )
 
     def num_diff(x: str, y: str) -> str:
-        return f"NOT ((({x}) IS NULL AND ({y}) IS NULL) OR abs(({x}) - ({y})) <= {TOL} * greatest(1, abs({x})))"
+        # legacy stores Inf/NaN (diverged fits) where the new schema stores NULL: both count as missing
+        lx = f"(CASE WHEN isfinite({x}) THEN {x} END)"
+        return f"NOT ((({lx}) IS NULL AND ({y}) IS NULL) OR abs(({lx}) - ({y})) <= {TOL} * greatest(1, abs({lx})))"
 
     # ---- counts -------------------------------------------------------
-    for t_l, t_n in [("gene_summary", "gene_summary"), ("variant_index", "variant_index"), ("rsid_map", "rsid_map")]:
-        nl = con.execute(f"SELECT count(*) FROM L.{t_l}").fetchone()[0]
+    # legacy keeps VEP rows without a gene symbol (never joined to anything); the new schema drops them
+    con.execute("CREATE TEMP VIEW L_rsid AS SELECT * FROM L.rsid_map WHERE gene IS NOT NULL AND gene <> '-'")
+    for t_l, t_n in [
+        ("gene_summary", "gene_summary"),
+        ("variant_index", "variant_index"),
+        ("L_rsid", "rsid_map"),
+    ]:
+        nl = con.execute(f"SELECT count(*) FROM {'L.' if not t_l.startswith('L_') else ''}{t_l}").fetchone()[
+            0
+        ]
         nn = con.execute(f"SELECT count(*) FROM N.{t_n}").fetchone()[0]
         check(f"{t_n} row count", int(nl != nn), f"legacy {nl:,} vs new {nn:,}")
     nl = con.execute("SELECT count(*) FROM L.assoc").fetchone()[0]
@@ -69,7 +81,7 @@ def main() -> int:
            OR l.chrom IS DISTINCT FROM n.chrom OR l.min_pos IS DISTINCT FROM n.min_pos
            OR l.max_pos IS DISTINCT FROM n.max_pos OR l.n_variants <> n.n_variants
            OR l.top_variant IS DISTINCT FROM n.top_variant OR l.top_trait IS DISTINCT FROM n.top_trait
-           OR {num_diff('l.min_p', 'n.min_p')}""").fetchone()[0]
+           OR {num_diff("l.min_p", "n.min_p")}""").fetchone()[0]
     check("gene_summary values", d)
 
     # ---- variant_index ----------------------------------------------------------
@@ -78,7 +90,7 @@ def main() -> int:
         WHERE l.name IS NULL OR n.variant_id IS NULL
            OR l.n_traits <> n.n_traits OR l.top_trait IS DISTINCT FROM n.top_trait
            OR l.n_carriers IS DISTINCT FROM n.n_carriers
-           OR {num_diff('l.min_p', 'n.min_p')} OR {num_diff('l.top_or', 'n.top_or')}""").fetchone()[0]
+           OR {num_diff("l.min_p", "n.min_p")} OR {num_diff("l.top_or", "n.top_or")}""").fetchone()[0]
     check("variant_index values (n_traits, min_p, top_trait, top_or, n_carriers)", d)
 
     # ---- annotation --------------------------------------------------------------
@@ -91,15 +103,19 @@ def main() -> int:
         if lname not in lcols:
             print(f"     (annotation.{f.name}: not in legacy table, skipped)")
             continue
-        conds.append(num_diff(f"l.{lname}", f"n.{f.name}") if f.type == "num" else f"l.{lname} IS DISTINCT FROM n.{f.name}")
+        conds.append(
+            num_diff(f"l.{lname}", f"n.{f.name}")
+            if f.type == "num"
+            else f"l.{lname} IS DISTINCT FROM n.{f.name}"
+        )
     d = con.execute(f"""
         SELECT count(*) FROM (SELECT * FROM L.annotation WHERE gene IS NOT NULL AND gene <> '-') l
         FULL JOIN N.annotation n ON n.variant_id = l.name AND n.gene = l.gene
-        WHERE l.name IS NULL OR n.variant_id IS NULL OR {' OR '.join(conds)}""").fetchone()[0]
+        WHERE l.name IS NULL OR n.variant_id IS NULL OR {" OR ".join(conds)}""").fetchone()[0]
     check(f"annotation values ({len(conds)} fields, all variant-gene pairs)", d)
 
     # ---- rsid_map -----------------------------------------------------------------------
-    d = con.execute("""SELECT count(*) FROM L.rsid_map l FULL JOIN N.rsid_map n
+    d = con.execute("""SELECT count(*) FROM L_rsid l FULL JOIN N.rsid_map n
                        ON n.rsid = l.rsid AND n.variant_id = l.name AND n.gene = l.gene
                        WHERE l.rsid IS NULL OR n.rsid IS NULL""").fetchone()[0]
     check("rsid_map", d)
@@ -108,13 +124,19 @@ def main() -> int:
     con.execute(f"""CREATE TEMP TABLE sample AS
                     SELECT name, gene FROM L.variant_index ORDER BY hash(name || gene) LIMIT {a.sample}""")
     cohorts = con.execute("SELECT id, is_meta FROM N.cohort ORDER BY ord").fetchall()
-    stats = [("or", "or"), ("p", "p"), ("cases", "cases"), ("casecarr", "case_carriers"),
-             ("controls", "controls"), ("ctrlcarr", "ctrl_carriers")]
+    stats = [
+        ("or", "or"),
+        ("p", "p"),
+        ("cases", "cases"),
+        ("casecarr", "case_carriers"),
+        ("controls", "controls"),
+        ("ctrlcarr", "ctrl_carriers"),
+    ]
     for cid, is_meta in cohorts:
         suf = "meta" if is_meta else cid.lower()
         conds = []
         for ls, ns in stats:
-            conds.append(num_diff(f"l.{ls}_{suf}", f"n.\"{ns}\""))
+            conds.append(num_diff(f"l.{ls}_{suf}", f'n."{ns}"'))
         # legacy: cohort absent == all its stat columns NULL; new: no row
         d = con.execute(f"""
             WITH l AS (SELECT a.* FROM L.assoc a JOIN sample s ON s.name = a.name AND s.gene = a.gene),
@@ -122,7 +144,7 @@ def main() -> int:
             SELECT count(*) FROM l FULL JOIN n ON n.variant_id = l.name AND n.gene = l.gene AND n.trait = l.trait
             WHERE (l.name IS NULL)
                OR (n.variant_id IS NULL AND NOT (l.or_{suf} IS NULL AND l.p_{suf} IS NULL AND l.cases_{suf} IS NULL))
-               OR (n.variant_id IS NOT NULL AND ({' OR '.join(conds)}))""").fetchone()[0]
+               OR (n.variant_id IS NOT NULL AND ({" OR ".join(conds)}))""").fetchone()[0]
         check(f"assoc {cid:5} ({a.sample} sampled variants, all traits)", d)
 
     print("\nRESULT:", "identical" if fails == 0 else f"{fails} check(s) differ")

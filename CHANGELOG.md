@@ -29,6 +29,14 @@ All notable changes to this project are documented here. The format follows
 - Tests: 53 total — API contract now runs against **both** the legacy database and a phewas_core
   dataset, plus value-for-value equivalence tests and core unit/integration tests.
 
+### Fixed (found by the first real import)
+- VEP rows without a gene symbol (regulatory/motif features) are skipped by the annotation importer.
+- Non-finite statistics (`Inf` odds ratios from diverged Firth fits: 26,472 META / 25,273 AoU /
+  1,268 UKBB rows in the IEI dataset) are stored as missing and counted in a manifest warning;
+  the legacy API already returned them as `null`.
+- `variant_index.top_or` is the top trait's own OR even when that OR is missing.
+- `scripts/compare_with_legacy.py` checks a dataset value-for-value against the legacy database.
+
 ### Changed
 - `app.py` serves a phewas_core dataset when given one (`PHEWAS_DATASET`, `IEI_PHEWAS_DB`, or the
   library's current dataset) and still serves the legacy `data/phewas.duckdb`. Bundles now ship

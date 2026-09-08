@@ -10,6 +10,7 @@ One-time build. Tables produced:
   gene_summary   per gene: variant count, top hit                          (drives home page)
   rsid_map       rsID -> variant                                           (drives search)
 """
+
 import argparse
 import os
 import time
@@ -22,22 +23,52 @@ DATA = os.path.join(BASE, "data")
 # Defaults reproduce the original IEI build; every path can be overridden on the
 # command line so the same script builds test fixtures and future datasets.
 DEFAULT_DB = os.path.join(DATA, "phewas.duckdb")
-DEFAULT_SUMSTATS = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz"
+DEFAULT_SUMSTATS = (
+    "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz"
+)
 DEFAULT_ANNOTATION = "/Users/yluo/Work/PheWAS/IEI_haploinsufficiency/data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv"
 DEFAULT_PHECODE_CSV = os.path.join(DATA, "phecode_definitions1.2.csv")
 
 SUMSTATS_TYPES = {
-    "Name": "VARCHAR", "Chr": "VARCHAR", "Pos": "BIGINT", "Ref": "VARCHAR", "Alt": "VARCHAR",
-    "Gene": "VARCHAR", "Consequence": "VARCHAR", "Trait": "VARCHAR", "Source": "VARCHAR",
-    "Total_Cases": "BIGINT", "Total_Case_Carriers": "BIGINT",
-    "Total_Controls": "BIGINT", "Total_Ctrl_Carriers": "BIGINT",
-    "Cases_AoU": "BIGINT", "CaseCarr_AoU": "BIGINT", "Controls_AoU": "BIGINT", "CtrlCarr_AoU": "BIGINT",
-    "Cases_UKBB": "BIGINT", "CaseCarr_UKBB": "BIGINT", "Controls_UKBB": "BIGINT", "CtrlCarr_UKBB": "BIGINT",
-    "Beta_AoU": "DOUBLE", "SE_AoU": "DOUBLE", "Pval_AoU": "DOUBLE", "LOG10P_AoU": "DOUBLE",
-    "OR_AoU": "DOUBLE", "AAF_AoU": "DOUBLE", "MAC_AoU": "DOUBLE",
-    "Beta_UKBB": "DOUBLE", "SE_UKBB": "DOUBLE", "Pval_UKBB": "DOUBLE", "LOG10P_UKBB": "DOUBLE",
-    "OR_UKBB": "DOUBLE", "AAF_UKBB": "DOUBLE", "MAC_UKBB": "DOUBLE",
-    "Z_Meta": "DOUBLE", "Beta_Meta": "DOUBLE", "Meta_OR": "DOUBLE", "Meta_Pval": "DOUBLE",
+    "Name": "VARCHAR",
+    "Chr": "VARCHAR",
+    "Pos": "BIGINT",
+    "Ref": "VARCHAR",
+    "Alt": "VARCHAR",
+    "Gene": "VARCHAR",
+    "Consequence": "VARCHAR",
+    "Trait": "VARCHAR",
+    "Source": "VARCHAR",
+    "Total_Cases": "BIGINT",
+    "Total_Case_Carriers": "BIGINT",
+    "Total_Controls": "BIGINT",
+    "Total_Ctrl_Carriers": "BIGINT",
+    "Cases_AoU": "BIGINT",
+    "CaseCarr_AoU": "BIGINT",
+    "Controls_AoU": "BIGINT",
+    "CtrlCarr_AoU": "BIGINT",
+    "Cases_UKBB": "BIGINT",
+    "CaseCarr_UKBB": "BIGINT",
+    "Controls_UKBB": "BIGINT",
+    "CtrlCarr_UKBB": "BIGINT",
+    "Beta_AoU": "DOUBLE",
+    "SE_AoU": "DOUBLE",
+    "Pval_AoU": "DOUBLE",
+    "LOG10P_AoU": "DOUBLE",
+    "OR_AoU": "DOUBLE",
+    "AAF_AoU": "DOUBLE",
+    "MAC_AoU": "DOUBLE",
+    "Beta_UKBB": "DOUBLE",
+    "SE_UKBB": "DOUBLE",
+    "Pval_UKBB": "DOUBLE",
+    "LOG10P_UKBB": "DOUBLE",
+    "OR_UKBB": "DOUBLE",
+    "AAF_UKBB": "DOUBLE",
+    "MAC_UKBB": "DOUBLE",
+    "Z_Meta": "DOUBLE",
+    "Beta_Meta": "DOUBLE",
+    "Meta_OR": "DOUBLE",
+    "Meta_Pval": "DOUBLE",
 }
 
 
@@ -235,7 +266,7 @@ def build(sumstats, annotation, phecode_csv, db, memory_limit="16GB", quiet=Fals
         ORDER BY gene, name, trait
     """)
     n_assoc = con.sql("SELECT count(*) FROM assoc").fetchone()[0]
-    log(f"  {n_assoc} association rows kept ({time.time()-t0:.0f}s)")
+    log(f"  {n_assoc} association rows kept ({time.time() - t0:.0f}s)")
 
     # ---------------- derived tables ----------------
     log("Building variant_index / gene_summary / rsid_map...")
@@ -287,16 +318,18 @@ def build(sumstats, annotation, phecode_csv, db, memory_limit="16GB", quiet=Fals
         ("variants in assoc", "SELECT count(*) FROM variant_index"),
         ("genes in assoc", "SELECT count(*) FROM gene_summary"),
         ("traits kept", "SELECT count(DISTINCT trait) FROM assoc"),
-        ("variant-gene pairs missing annotation",
-         "SELECT count(*) FROM variant_index v WHERE NOT EXISTS "
-         "(SELECT 1 FROM annotation a WHERE a.name=v.name AND a.gene=v.gene)"),
+        (
+            "variant-gene pairs missing annotation",
+            "SELECT count(*) FROM variant_index v WHERE NOT EXISTS "
+            "(SELECT 1 FROM annotation a WHERE a.name=v.name AND a.gene=v.gene)",
+        ),
         ("rsIDs", "SELECT count(*) FROM rsid_map"),
     ]:
         counts[label] = con.sql(q).fetchone()[0]
         log(f"  {label}: {counts[label]}")
 
     con.close()
-    log(f"Done. DB size: {os.path.getsize(DB)/1e9:.2f} GB -> {DB}")
+    log(f"Done. DB size: {os.path.getsize(DB) / 1e9:.2f} GB -> {DB}")
     return counts
 
 

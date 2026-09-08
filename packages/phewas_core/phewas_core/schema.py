@@ -68,18 +68,23 @@ def is_v1_dataset(con: duckdb.DuckDBPyConnection) -> bool:
 
 # ---------------------------------------------------------------- derived tables
 
+# top_or must be the OR of the top trait's own row, which may be NULL (diverged fit) —
+# arg_min(a."or", a.p) would skip the NULL and return the next trait's OR instead.
 DERIVE_VARIANT_INDEX = """
 INSERT INTO variant_index
-SELECT a.variant_id, a.gene,
-       count(*) FILTER (WHERE a.cohort = $primary)                       AS n_traits,
-       min(a.p)  FILTER (WHERE a.cohort = $primary)                      AS min_p,
-       arg_min(a.trait, a.p) FILTER (WHERE a.cohort = $primary)          AS top_trait,
-       arg_min(a."or", a.p)  FILTER (WHERE a.cohort = $primary)          AS top_or,
-       max(coalesce(a.case_carriers, 0) + coalesce(a.ctrl_carriers, 0))
-           FILTER (WHERE a.cohort = $primary)                            AS n_carriers,
-       list_sort(list_distinct(list(a.cohort)))                          AS cohorts
-FROM assoc a
-GROUP BY a.variant_id, a.gene
+SELECT variant_id, gene, n_traits, min_p, top.trait AS top_trait, top."or" AS top_or, n_carriers, cohorts
+FROM (
+    SELECT a.variant_id, a.gene,
+           count(*) FILTER (WHERE a.cohort = $primary)                       AS n_traits,
+           min(a.p)  FILTER (WHERE a.cohort = $primary)                      AS min_p,
+           arg_min({'trait': a.trait, 'or': a."or"}, a.p)
+               FILTER (WHERE a.cohort = $primary)                            AS top,
+           max(coalesce(a.case_carriers, 0) + coalesce(a.ctrl_carriers, 0))
+               FILTER (WHERE a.cohort = $primary)                            AS n_carriers,
+           list_sort(list_distinct(list(a.cohort)))                          AS cohorts
+    FROM assoc a
+    GROUP BY a.variant_id, a.gene
+)
 """
 
 DERIVE_GENE_SUMMARY = """

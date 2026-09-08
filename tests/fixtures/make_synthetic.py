@@ -273,6 +273,9 @@ def _assoc_row(rng, v, trait, source, ncase, nctrl):
         row[f"Pval_{c}"] = _fmt(p)
         row[f"LOG10P_{c}"] = _fmt(-math.log10(p))
         row[f"OR_{c}"] = _fmt(math.exp(beta))
+        if casecarr > 0 and ctrlcarr == 0 and rng.random() < 0.5:  # diverged Firth fit, as REGENIE emits
+            row[f"OR_{c}"] = "Inf"
+            per[c]["diverged"] = True
         row[f"AAF_{c}"] = _fmt(per[c]["aaf"])
         row[f"MAC_{c}"] = _fmt(float(per[c]["mac"]))
     # meta: inverse-variance weighted when both cohorts present, pass-through otherwise
@@ -287,7 +290,7 @@ def _assoc_row(rng, v, trait, source, ncase, nctrl):
     row["Total_Ctrl_Carriers"] = sum(per[c]["ctrlcarr"] for c in per)
     row["Z_Meta"] = _fmt(z_m)
     row["Beta_Meta"] = _fmt(beta_m)
-    row["Meta_OR"] = _fmt(math.exp(beta_m))
+    row["Meta_OR"] = "Inf" if any(per[c].get("diverged") for c in per) else _fmt(math.exp(beta_m))
     row["Meta_Pval"] = _fmt(p_m)
     return row
 

@@ -102,6 +102,14 @@ def _q(col: str) -> str:
     return '"' + col.replace('"', '""') + '"'
 
 
+def _finite(col: str, stat: str) -> str:
+    """Non-finite statistics (Inf/NaN odds ratios from diverged fits) are stored as missing:
+    JSON cannot carry them and the browser showed them as missing anyway."""
+    if stat in INT_STATS:
+        return _q(col)
+    return f"CASE WHEN isfinite({_q(col)}) THEN {_q(col)} END"
+
+
 def _stage_types(profile: Profile, cohorts: list[CohortSpec]) -> dict[str, str]:
     types = {c: "VARCHAR" for c in profile.keys.values()}
     for k, c in profile.variant_columns.items():
@@ -194,6 +202,7 @@ class Importer:
             cohort_rows = self._cohorts(con, profile, cohorts)
 
             # 5. associations
+            self._count_nonfinite(con, profile, cohorts)
             n_assoc = self._unpivot(con, profile, cohorts)
             con.execute("DROP TABLE stage")
             self.log(f"assoc: {n_assoc:,} rows")
@@ -392,7 +401,7 @@ class Importer:
                 cols = []
                 for stat in STATISTICS:
                     col = spec.columns.get(stat)
-                    cols.append(f"{_q(col)} AS {_q(stat)}" if col else f"NULL AS {_q(stat)}")
+                    cols.append(f"{_finite(col, stat)} AS {_q(stat)}" if col else f"NULL AS {_q(stat)}")
                 present = " OR ".join(f"{_q(c)} IS NOT NULL" for c in spec.columns.values())
                 parts.append(f"""SELECT variant_id, gene, trait, '{spec.id}' AS cohort, {", ".join(cols)}
                                  FROM stage WHERE gene = ? AND variant_id BETWEEN ? AND ? AND ({present})""")
@@ -402,7 +411,7 @@ class Importer:
             cols = []
             for stat in STATISTICS:
                 col = profile.stat_columns.get(stat)
-                cols.append(f"{_q(col)} AS {_q(stat)}" if col else f"NULL AS {_q(stat)}")
+                cols.append(f"{_finite(col, stat)} AS {_q(stat)}" if col else f"NULL AS {_q(stat)}")
             body = f"""SELECT variant_id, gene, trait, cohort, {", ".join(cols)}
                        FROM stage WHERE gene = ? AND variant_id BETWEEN ? AND ?"""
             nparams = 1
@@ -416,6 +425,25 @@ class Importer:
             done += n
             self.step("assoc", done, total, gene)
         return count(con, "SELECT count(*) FROM assoc")
+
+    def _count_nonfinite(
+        self, con: duckdb.DuckDBPyConnection, profile: Profile, cohorts: list[CohortSpec]
+    ) -> None:
+        if profile.kind == "wide":
+            cols = sorted({c for s in cohorts for st, c in s.columns.items() if st not in INT_STATS})
+        else:
+            cols = sorted(c for st, c in profile.stat_columns.items() if st not in INT_STATS)
+        if not cols:
+            return
+        terms = ", ".join(f"count(*) FILTER (WHERE NOT isfinite({_q(c)})) AS {_q(c)}" for c in cols)
+        row = con.execute(f"SELECT {terms} FROM stage").fetchone() or ()
+        found = {c: int(n) for c, n in zip(cols, row, strict=True) if n}
+        if found:
+            total = sum(found.values())
+            detail = ", ".join(f"{c}: {n:,}" for c, n in sorted(found.items(), key=lambda kv: -kv[1]))
+            self.warn(
+                f"{total:,} non-finite statistics (Inf/NaN, e.g. diverged odds ratios) stored as missing ({detail})"
+            )
 
     def _fill_variant_positions(self, con: duckdb.DuckDBPyConnection) -> None:
         """Variant coordinates come from the sumstats; annotation fills gaps if any."""
