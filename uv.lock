@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "phewas-browser",
     "phewas-core",
+    "phewas-server",
 ]
 
 [[package]]
@@ -426,6 +427,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "phewas-core" },
+    { name = "phewas-server" },
     { name = "uvicorn" },
 ]
 
@@ -442,6 +444,7 @@ requires-dist = [
     { name = "duckdb", specifier = "==1.5.5" },
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "phewas-core", editable = "packages/phewas_core" },
+    { name = "phewas-server", editable = "packages/phewas_server" },
     { name = "uvicorn", specifier = "==0.52.4" },
 ]
 
@@ -463,6 +466,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "duckdb", specifier = "==1.5.5" }]
+
+[[package]]
+name = "phewas-server"
+version = "0.1.0"
+source = { editable = "packages/phewas_server" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "phewas-core" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = "==0.141.1" },
+    { name = "phewas-core", editable = "packages/phewas_core" },
+    { name = "uvicorn", specifier = "==0.52.4" },
+]
 
 [[package]]
 name = "pluggy"

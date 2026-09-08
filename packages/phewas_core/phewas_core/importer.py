@@ -14,11 +14,12 @@ import datetime as dt
 import hashlib
 import os
 import shutil
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 import duckdb
 
@@ -63,6 +64,10 @@ class ImportResult:
 
 
 class ImportFailedError(RuntimeError):
+    pass
+
+
+class ImportCancelledError(RuntimeError):
     pass
 
 
@@ -128,10 +133,17 @@ def _stage_types(profile: Profile, cohorts: list[CohortSpec]) -> dict[str, str]:
 
 
 class Importer:
-    def __init__(self, library: Library, request: ImportRequest, progress: ProgressFn | None = None):
+    def __init__(
+        self,
+        library: Library,
+        request: ImportRequest,
+        progress: ProgressFn | None = None,
+        cancel: threading.Event | None = None,
+    ):
         self.lib = library
         self.req = request
         self.progress = progress or (lambda *a: None)
+        self.cancel = cancel
         self.warnings: list[str] = []
         self.log_lines: list[str] = []
         self.t0 = time.time()
@@ -149,6 +161,8 @@ class Importer:
         self.log("WARNING: " + msg)
 
     def step(self, name: str, done: int = 0, total: int = 1, msg: str = "") -> None:
+        if self.cancel is not None and self.cancel.is_set():
+            raise ImportCancelledError("import cancelled")
         self.progress(name, done, total, msg)
 
     # ---- run ---------------------------------------------------------------
@@ -519,5 +533,91 @@ class Importer:
         )
 
 
-def run_import(library: Library, request: ImportRequest, progress: ProgressFn | None = None) -> ImportResult:
-    return Importer(library, request, progress).run()
+def run_import(
+    library: Library,
+    request: ImportRequest,
+    progress: ProgressFn | None = None,
+    cancel: threading.Event | None = None,
+) -> ImportResult:
+    return Importer(library, request, progress, cancel).run()
+
+
+# ---------------------------------------------------------------- inspection (wizard step 1)
+
+
+def inspect_sumstats(path: Path, home: Path | None = None, profile_name: str | None = None) -> dict[str, Any]:
+    """Cheap look at a sumstats file: header, matched profile, cohorts, problems. No full read."""
+    path = Path(path)
+    if not path.exists():
+        return {"path": str(path), "exists": False, "problems": ["file not found"]}
+    con = duckdb.connect()
+    try:
+        profile = get_profile(profile_name, home) if profile_name else None
+        delim = profile.delimiter if profile else "\t"
+        header = sniff_header(con, path, delim)
+        if len(header) == 1 and "," in header[0]:
+            header = sniff_header(con, path, ",")
+        if profile is None:
+            profile = match_profile(header, home)
+        problems: list[str] = []
+        cohorts: list[dict[str, Any]] = []
+        if profile is None:
+            problems.append("no import profile matches this header; choose one or create a profile")
+        else:
+            missing = profile.missing_columns(header)
+            if missing:
+                problems.append(f"profile {profile.name}: columns missing from file: {missing}")
+            elif profile.kind == "wide":
+                try:
+                    cohorts = [
+                        {"id": c.id, "label": c.label, "is_meta": c.is_meta, "statistics": sorted(c.columns)}
+                        for c in profile.cohorts_for_header(header)
+                    ]
+                except ProfileError as e:
+                    problems.append(str(e))
+        preview = con.execute(
+            "SELECT * FROM read_csv(?, delim=?, header=true, all_varchar=true, sample_size=100) LIMIT 5",
+            [str(path), delim],
+        ).fetchall()
+        return {
+            "path": str(path),
+            "exists": True,
+            "bytes": path.stat().st_size,
+            "header": header,
+            "profile": profile.name if profile else None,
+            "profile_label": profile.label if profile else None,
+            "kind": profile.kind if profile else None,
+            "cohorts": cohorts,
+            "preview": [dict(zip(header, r, strict=True)) for r in preview],
+            "problems": problems,
+        }
+    finally:
+        con.close()
+
+
+def inspect_annotation(path: Path) -> dict[str, Any]:
+    from .annotation import VEP_GENE_COL, VEP_ID_COL, vep_header
+    from .fields import FIELDS
+
+    path = Path(path)
+    if not path.exists():
+        return {"path": str(path), "exists": False, "problems": ["file not found"]}
+    con = duckdb.connect()
+    try:
+        header = vep_header(con, path)
+    finally:
+        con.close()
+    problems = [
+        f"required VEP column missing: {c}" for c in (VEP_ID_COL, VEP_GENE_COL, "Feature") if c not in header
+    ]
+    hs = set(header)
+    covered = [f.name for f in FIELDS if f.vep and not f.hidden and any(c in hs for c in f.vep.cols)]
+    return {
+        "path": str(path),
+        "exists": True,
+        "bytes": path.stat().st_size,
+        "header": header,
+        "fields_covered": covered,
+        "n_fields_total": sum(1 for f in FIELDS if f.vep and not f.hidden),
+        "problems": problems,
+    }

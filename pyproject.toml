@@ -11,6 +11,7 @@ dependencies = [
     "fastapi==0.141.1",
     "uvicorn==0.52.4",
     "phewas-core",
+    "phewas-server",
 ]
 
 [dependency-groups]
@@ -30,6 +31,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 phewas-core = { workspace = true }
+phewas-server = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

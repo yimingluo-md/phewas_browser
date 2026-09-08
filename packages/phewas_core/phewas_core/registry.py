@@ -13,6 +13,7 @@ and renames it into place, so a crash can never leave a half-built dataset visib
 
 from __future__ import annotations
 
+import builtins
 import json
 import shutil
 import uuid
@@ -124,6 +125,25 @@ class Library:
             reg["current"] = dataset_id
         self._write(reg)
         return DatasetRef(dataset_id, final)
+
+    def update_manifest(
+        self, id_or_prefix: str, *, name: str | None = None, notes: str | None = None
+    ) -> Manifest:
+        """Edit the user-facing fields of a dataset's manifest.json (the database copy is untouched)."""
+        ref = self.get(id_or_prefix)
+        m = ref.manifest()
+        if name is not None and name.strip():
+            m.name = name.strip()
+        if notes is not None:
+            m.notes = notes
+        m.save(ref.manifest_path)
+        return m
+
+    def reorder(self, ids: builtins.list[str]) -> None:
+        reg = self._read()
+        known = [r.id for r in self.list()]
+        reg["datasets"] = [i for i in ids if i in known] + [i for i in known if i not in ids]
+        self._write(reg)
 
     def remove(self, id_or_prefix: str) -> None:
         ref = self.get(id_or_prefix)

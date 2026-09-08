@@ -37,8 +37,12 @@ class Dataset:
         self._lock = threading.Lock()
         if not is_v1_dataset(self._con):
             raise ValueError(f"{self.db_path} is not a phewas_core dataset (schema v1)")
-        raw = self.q("SELECT value FROM meta WHERE key = 'manifest'")
-        self.manifest = Manifest.from_dict(json.loads(raw[0]["value"])) if raw else None
+        sidecar = self.db_path.with_name("manifest.json")
+        if sidecar.exists():  # the editable copy (name, notes) wins over the one frozen in the database
+            self.manifest: Manifest | None = Manifest.load(sidecar)
+        else:
+            raw = self.q("SELECT value FROM meta WHERE key = 'manifest'")
+            self.manifest = Manifest.from_dict(json.loads(raw[0]["value"])) if raw else None
         self.cohort_ids = [r["id"] for r in self.q("SELECT id FROM cohort ORDER BY ord")]
         self.primary = next(
             (r["id"] for r in self.q("SELECT id FROM cohort WHERE is_primary")), self.cohort_ids[0]

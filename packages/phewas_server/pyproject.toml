@@ -1,0 +1,19 @@
+[project]
+name = "phewas-server"
+version = "0.1.0"
+description = "FastAPI backend of the PheWAS Browser: dataset-scoped API v1, import jobs, static frontend."
+requires-python = ">=3.12"
+dependencies = ["phewas-core", "fastapi==0.141.1", "uvicorn==0.52.4"]
+
+[project.scripts]
+phewas-server = "phewas_server.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["phewas_server"]
+
+[tool.uv.sources]
+phewas-core = { workspace = true }
