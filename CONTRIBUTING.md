@@ -18,6 +18,9 @@ uv sync                                             # creates .venv from uv.lock
 ```bash
 uv run pytest -q                 # tests on the synthetic dataset (< 2 s)
 uv run ruff check .              # lint
+uv run ruff format packages tests
+uv run mypy                      # strict typing on packages/
+uv run phewas --help             # dataset library CLI (import / list / info / serve ...)
 uv run python tests/fixtures/make_synthetic.py /tmp/syn      # inspect the fixture inputs
 uv run python scripts/build_db.py --sumstats /tmp/syn/sumstats.tsv.gz \
     --annotation /tmp/syn/annotation.tsv --out /tmp/syn/phewas.duckdb --memory-limit 1GB
@@ -39,12 +42,25 @@ IEI_PHEWAS_DB=/tmp/syn/phewas.duckdb uv run uvicorn app:app --port 8555   # brow
 - **Architecture decisions** are recorded in `docs/ARCHITECTURE_PLAN.md` (§4) and,
   from Phase 1 on, as one file per decision in `docs/adr/`.
 
-## Repository map (Phase 0)
+## Repository map (Phase 1)
 
 | Path | Role |
 |---|---|
-| `app.py`, `static/`, `launch.sh`, `*.command`, `*.bat` | today's runnable browser — keep working until the native shell (Phase 3) replaces it |
-| `scripts/build_db.py` | import pipeline; CLI flags for inputs/outputs |
-| `tests/` | pytest suite + synthetic fixture generator |
-| `docs/ARCHITECTURE_PLAN.md` | where this is going and why |
-| `.github/workflows/ci.yml` | lint + tests on Linux and macOS |
+| `packages/phewas_core/` | the engine: schema, field registry, profiles, importer, registry, query layer, CLI |
+| `app.py`, `static/`, `launch.sh`, `*.command`, `*.bat` | today's runnable browser (legacy API shape via `legacy_api.py`) — keeps working until the native shell (Phase 3) replaces it |
+| `scripts/build_db.py` | legacy one-off pipeline; kept only as the reference the equivalence tests compare against |
+| `tests/` | pytest suite + synthetic fixture generator; `test_equivalence.py` pins new == legacy |
+| `benchmarks/` | reproducible measurements behind ADRs |
+| `docs/ARCHITECTURE_PLAN.md`, `docs/adr/` | where this is going and why; one file per decision |
+| `.github/workflows/ci.yml` | lint + mypy + tests on Linux and macOS |
+
+## Adding things
+
+- **An annotation field**: one `Field(...)` entry in `packages/phewas_core/phewas_core/fields.py`;
+  re-import the dataset. Importer SQL, API metadata and (from Phase 2) UI columns follow.
+- **A sumstats layout**: a JSON profile in `builtin/profiles/` (or `<home>/profiles/` for a
+  user); see `regenie-meta-wide.json`. Statistics must be among `manifest.STATISTICS`.
+- **A phenotype dictionary**: any CSV with `trait,description[,category,category_ord,color]`
+  passed to `phewas import --dictionary`.
+- **A schema change**: bump `SCHEMA_VERSION`, add a migration note in `schema.py`, and make
+  `Dataset` refuse (with a clear message) datasets it cannot read.

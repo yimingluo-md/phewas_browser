@@ -14,6 +14,7 @@ canonical transcript duplicates, '&'-joined dbNSFP fields, '-' for missing.
 
 Everything is deterministic for a given seed. Nothing here derives from real data.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,37 +37,143 @@ GENES = [  # (gene, chrom, start) — fictional coordinates
 COHORTS = ["AoU", "UKBB"]
 
 SUMSTATS_HEADER = [
-    "Name", "Chr", "Pos", "Ref", "Alt", "Gene", "Consequence", "Trait", "Source",
-    "Total_Cases", "Total_Case_Carriers", "Total_Controls", "Total_Ctrl_Carriers",
-    "Cases_AoU", "CaseCarr_AoU", "Controls_AoU", "CtrlCarr_AoU",
-    "Cases_UKBB", "CaseCarr_UKBB", "Controls_UKBB", "CtrlCarr_UKBB",
-    "Beta_AoU", "SE_AoU", "Pval_AoU", "LOG10P_AoU", "OR_AoU", "AAF_AoU", "MAC_AoU",
-    "Beta_UKBB", "SE_UKBB", "Pval_UKBB", "LOG10P_UKBB", "OR_UKBB", "AAF_UKBB", "MAC_UKBB",
-    "Z_Meta", "Beta_Meta", "Meta_OR", "Meta_Pval",
+    "Name",
+    "Chr",
+    "Pos",
+    "Ref",
+    "Alt",
+    "Gene",
+    "Consequence",
+    "Trait",
+    "Source",
+    "Total_Cases",
+    "Total_Case_Carriers",
+    "Total_Controls",
+    "Total_Ctrl_Carriers",
+    "Cases_AoU",
+    "CaseCarr_AoU",
+    "Controls_AoU",
+    "CtrlCarr_AoU",
+    "Cases_UKBB",
+    "CaseCarr_UKBB",
+    "Controls_UKBB",
+    "CtrlCarr_UKBB",
+    "Beta_AoU",
+    "SE_AoU",
+    "Pval_AoU",
+    "LOG10P_AoU",
+    "OR_AoU",
+    "AAF_AoU",
+    "MAC_AoU",
+    "Beta_UKBB",
+    "SE_UKBB",
+    "Pval_UKBB",
+    "LOG10P_UKBB",
+    "OR_UKBB",
+    "AAF_UKBB",
+    "MAC_UKBB",
+    "Z_Meta",
+    "Beta_Meta",
+    "Meta_OR",
+    "Meta_Pval",
 ]
 
 ANNOTATION_HEADER = [
-    "#Uploaded_variation", "Location", "Allele", "Gene", "Feature", "Feature_type", "Consequence",
-    "IMPACT", "SYMBOL", "MANE_SELECT", "CANONICAL", "EXON", "INTRON", "HGVSc", "HGVSp",
-    "Existing_variation", "CLIN_SIG", "gnomADe_AF", "gnomADg_AF", "MAX_AF", "MAX_AF_POPS",
-    "gnomADe_AFR_AF", "gnomADe_AMR_AF", "gnomADe_EAS_AF", "gnomADe_NFE_AF", "gnomADe_SAS_AF",
-    "gnomADg_AFR_AF", "gnomADg_AMR_AF", "gnomADg_EAS_AF", "gnomADg_NFE_AF", "gnomADg_SAS_AF",
-    "CADD_PHRED", "CADD_phred", "REVEL_score", "AlphaMissense_pred", "AlphaMissense_score",
-    "MetaRNN_pred", "MetaRNN_score", "PrimateAI_pred", "SIFT_pred", "PolyPhen",
-    "phyloP100way_vertebrate", "ClinVar_CLNSIG", "ClinVar_CLNSIGCONF", "ClinVar_CLNREVSTAT",
-    "ClinVar_CLNDN", "SpliceAI_pred_DS_AG", "SpliceAI_pred_DS_AL", "SpliceAI_pred_DS_DG",
-    "SpliceAI_pred_DS_DL", "SpliceAI_max_DS", "SpliceAI_source", "50_BP_RULE_recomputed",
-    "LoF", "LoF_filter", "LoF_flags", "LoF_info", "LoGoFunc_GOF", "LoGoFunc_LOF",
-    "LoGoFunc_neutral", "LoGoFunc_prediction", "PromoterAI_score",
+    "#Uploaded_variation",
+    "Location",
+    "Allele",
+    "Gene",
+    "Feature",
+    "Feature_type",
+    "Consequence",
+    "IMPACT",
+    "SYMBOL",
+    "MANE_SELECT",
+    "CANONICAL",
+    "EXON",
+    "INTRON",
+    "HGVSc",
+    "HGVSp",
+    "Existing_variation",
+    "CLIN_SIG",
+    "gnomADe_AF",
+    "gnomADg_AF",
+    "MAX_AF",
+    "MAX_AF_POPS",
+    "gnomADe_AFR_AF",
+    "gnomADe_AMR_AF",
+    "gnomADe_EAS_AF",
+    "gnomADe_NFE_AF",
+    "gnomADe_SAS_AF",
+    "gnomADg_AFR_AF",
+    "gnomADg_AMR_AF",
+    "gnomADg_EAS_AF",
+    "gnomADg_NFE_AF",
+    "gnomADg_SAS_AF",
+    "CADD_PHRED",
+    "CADD_phred",
+    "REVEL_score",
+    "AlphaMissense_pred",
+    "AlphaMissense_score",
+    "MetaRNN_pred",
+    "MetaRNN_score",
+    "PrimateAI_pred",
+    "SIFT_pred",
+    "PolyPhen",
+    "phyloP100way_vertebrate",
+    "ClinVar_CLNSIG",
+    "ClinVar_CLNSIGCONF",
+    "ClinVar_CLNREVSTAT",
+    "ClinVar_CLNDN",
+    "SpliceAI_pred_DS_AG",
+    "SpliceAI_pred_DS_AL",
+    "SpliceAI_pred_DS_DG",
+    "SpliceAI_pred_DS_DL",
+    "SpliceAI_max_DS",
+    "SpliceAI_source",
+    "50_BP_RULE_recomputed",
+    "LoF",
+    "LoF_filter",
+    "LoF_flags",
+    "LoF_info",
+    "LoGoFunc_GOF",
+    "LoGoFunc_LOF",
+    "LoGoFunc_neutral",
+    "LoGoFunc_prediction",
+    "PromoterAI_score",
 ]
 
 CONSEQUENCES = [
-    ("missense_variant", "MODERATE"), ("stop_gained", "HIGH"), ("synonymous_variant", "LOW"),
-    ("frameshift_variant", "HIGH"), ("splice_region_variant&intron_variant", "LOW"),
-    ("intron_variant", "MODIFIER"), ("splice_donor_variant", "HIGH"),
+    ("missense_variant", "MODERATE"),
+    ("stop_gained", "HIGH"),
+    ("synonymous_variant", "LOW"),
+    ("frameshift_variant", "HIGH"),
+    ("splice_region_variant&intron_variant", "LOW"),
+    ("intron_variant", "MODIFIER"),
+    ("splice_donor_variant", "HIGH"),
 ]
-AA = ["Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", "Ile", "Leu", "Lys",
-      "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"]
+AA = [
+    "Ala",
+    "Arg",
+    "Asn",
+    "Asp",
+    "Cys",
+    "Gln",
+    "Glu",
+    "Gly",
+    "His",
+    "Ile",
+    "Leu",
+    "Lys",
+    "Met",
+    "Phe",
+    "Pro",
+    "Ser",
+    "Thr",
+    "Trp",
+    "Tyr",
+    "Val",
+]
 
 
 def _fmt(x, nd=6):
@@ -101,8 +208,18 @@ def make_variants(rng, n_per_gene):
                 ref = ref + "".join(rng.choice(bases) for _ in range(rng.randint(1, 4)))
                 alt = ref[0]
             csq, imp = rng.choice(CONSEQUENCES)
-            variants.append({"name": f"{chrom}:{pos}:{ref}:{alt}", "chrom": chrom, "pos": pos,
-                             "ref": ref, "alt": alt, "gene": gene, "consequence": csq, "impact": imp})
+            variants.append(
+                {
+                    "name": f"{chrom}:{pos}:{ref}:{alt}",
+                    "chrom": chrom,
+                    "pos": pos,
+                    "ref": ref,
+                    "alt": alt,
+                    "gene": gene,
+                    "consequence": csq,
+                    "impact": imp,
+                }
+            )
     # one variant shared by two genes (overlapping loci), as happens in the real annotation
     shared = dict(variants[0])
     shared["gene"] = GENES[1][0]
@@ -113,8 +230,17 @@ def make_variants(rng, n_per_gene):
 def _assoc_row(rng, v, trait, source, ncase, nctrl):
     """One wide association row. `source` in {'AoU', 'UKBB', 'AoU+UKBB'}."""
     row = dict.fromkeys(SUMSTATS_HEADER, "NA")
-    row.update(Name=v["name"], Chr=v["chrom"], Pos=v["pos"], Ref=v["ref"], Alt=v["alt"],
-               Gene=v["gene"], Consequence=v["consequence"], Trait=trait, Source=source)
+    row.update(
+        Name=v["name"],
+        Chr=v["chrom"],
+        Pos=v["pos"],
+        Ref=v["ref"],
+        Alt=v["alt"],
+        Gene=v["gene"],
+        Consequence=v["consequence"],
+        Trait=trait,
+        Source=source,
+    )
     per = {}
     for c in COHORTS:
         if c not in source:
@@ -127,9 +253,17 @@ def _assoc_row(rng, v, trait, source, ncase, nctrl):
         se = abs(rng.gauss(0.5, 0.15)) + 0.05
         z = beta / se
         p = max(math.erfc(abs(z) / math.sqrt(2)), 1e-300)
-        per[c] = dict(cases=cases, casecarr=casecarr, controls=controls, ctrlcarr=ctrlcarr,
-                      beta=beta, se=se, p=p, aaf=(casecarr + ctrlcarr) / (2 * (cases + controls)),
-                      mac=casecarr + ctrlcarr)
+        per[c] = dict(
+            cases=cases,
+            casecarr=casecarr,
+            controls=controls,
+            ctrlcarr=ctrlcarr,
+            beta=beta,
+            se=se,
+            p=p,
+            aaf=(casecarr + ctrlcarr) / (2 * (cases + controls)),
+            mac=casecarr + ctrlcarr,
+        )
         row[f"Cases_{c}"] = cases
         row[f"CaseCarr_{c}"] = casecarr
         row[f"Controls_{c}"] = controls
@@ -216,56 +350,114 @@ def write_annotation(path, rng, variants):
             all_afs = [x for x in e_afs + g_afs if x is not None]
             max_af = max(all_afs) if all_afs else None
             missense = v["consequence"].startswith("missense")
-            revel = "&".join(_fmt(rng.random(), 3) if rng.random() < 0.7 else "." for _ in range(3)) if missense else "-"
-            am_pred = "&".join(rng.choice(["likely_benign", "likely_pathogenic", "ambiguous", "."]) for _ in range(3)) if missense else "-"
+            revel = (
+                "&".join(_fmt(rng.random(), 3) if rng.random() < 0.7 else "." for _ in range(3))
+                if missense
+                else "-"
+            )
+            am_pred = (
+                "&".join(
+                    rng.choice(["likely_benign", "likely_pathogenic", "ambiguous", "."]) for _ in range(3)
+                )
+                if missense
+                else "-"
+            )
             am_score = "&".join(_fmt(rng.random(), 3) for _ in range(3)) if missense else "-"
             high = v["impact"] == "HIGH"
             lof = rng.choice(["HC", "LC"]) if high else "-"
             base = {
                 "#Uploaded_variation": ("chr" if rng.random() < 0.5 else "") + v["name"],
                 "Location": f"{v['chrom']}:{v['pos']}",
-                "Allele": v["alt"], "Gene": gene_id, "Feature_type": "Transcript",
-                "Consequence": v["consequence"], "IMPACT": v["impact"], "SYMBOL": v["gene"],
+                "Allele": v["alt"],
+                "Gene": gene_id,
+                "Feature_type": "Transcript",
+                "Consequence": v["consequence"],
+                "IMPACT": v["impact"],
+                "SYMBOL": v["gene"],
                 "EXON": f"{rng.randint(1, 20)}/20" if v["impact"] != "MODIFIER" else "-",
                 "INTRON": f"{rng.randint(1, 19)}/19" if v["impact"] == "MODIFIER" else "-",
-                "HGVSc": hgvsc, "HGVSp": hgvsp, "Existing_variation": existing,
-                "CLIN_SIG": rng.choice(["-", "-", "benign", "uncertain_significance", "pathogenic&likely_pathogenic"]),
+                "HGVSc": hgvsc,
+                "HGVSp": hgvsp,
+                "Existing_variation": existing,
+                "CLIN_SIG": rng.choice(
+                    ["-", "-", "benign", "uncertain_significance", "pathogenic&likely_pathogenic"]
+                ),
                 "gnomADe_AF": _fmt(rng.random() * 1e-3) if rng.random() < 0.6 else "-",
                 "gnomADg_AF": _fmt(rng.random() * 1e-3) if rng.random() < 0.5 else "-",
                 "MAX_AF": _fmt(max_af) if max_af is not None else "-",
                 "MAX_AF_POPS": rng.choice(["gnomADe_NFE", "gnomADg_AFR", "-"]) if max_af is not None else "-",
                 "CADD_PHRED": _fmt(rng.uniform(0, 40), 3) if rng.random() < 0.9 else "-",
                 "CADD_phred": "-",
-                "REVEL_score": revel, "AlphaMissense_pred": am_pred, "AlphaMissense_score": am_score,
+                "REVEL_score": revel,
+                "AlphaMissense_pred": am_pred,
+                "AlphaMissense_score": am_score,
                 "MetaRNN_pred": "&".join(rng.choice(["T", "D", "."]) for _ in range(3)) if missense else "-",
                 "MetaRNN_score": "&".join(_fmt(rng.random(), 3) for _ in range(3)) if missense else "-",
                 "PrimateAI_pred": rng.choice(["T", "D", "-"]) if missense else "-",
                 "SIFT_pred": rng.choice(["T", "D", "T&D", "-"]) if missense else "-",
                 "PolyPhen": rng.choice(["benign(0.01)", "probably_damaging(0.99)", "-"]) if missense else "-",
                 "phyloP100way_vertebrate": "&".join(_fmt(rng.uniform(-2, 9), 3) for _ in range(2)),
-                "ClinVar_CLNSIG": rng.choice(["-", "-", "Benign", "Uncertain_significance", "Pathogenic/Likely_pathogenic"]),
-                "ClinVar_CLNSIGCONF": "-", "ClinVar_CLNREVSTAT": rng.choice(["-", "criteria_provided&_single_submitter"]),
-                "ClinVar_CLNDN": rng.choice(["-", "not_provided", "Immunodeficiency_X|Inborn_genetic_diseases"]),
-                "SpliceAI_pred_DS_AG": _fmt(rng.random() * 0.2, 2), "SpliceAI_pred_DS_AL": _fmt(rng.random() * 0.2, 2),
-                "SpliceAI_pred_DS_DG": _fmt(rng.random() * 0.2, 2), "SpliceAI_pred_DS_DL": _fmt(rng.random(), 2),
-                "SpliceAI_source": "precomputed" if len(v["ref"]) == 1 and len(v["alt"]) == 1 else "BroadAPI_masked_d50",
+                "ClinVar_CLNSIG": rng.choice(
+                    ["-", "-", "Benign", "Uncertain_significance", "Pathogenic/Likely_pathogenic"]
+                ),
+                "ClinVar_CLNSIGCONF": "-",
+                "ClinVar_CLNREVSTAT": rng.choice(["-", "criteria_provided&_single_submitter"]),
+                "ClinVar_CLNDN": rng.choice(
+                    ["-", "not_provided", "Immunodeficiency_X|Inborn_genetic_diseases"]
+                ),
+                "SpliceAI_pred_DS_AG": _fmt(rng.random() * 0.2, 2),
+                "SpliceAI_pred_DS_AL": _fmt(rng.random() * 0.2, 2),
+                "SpliceAI_pred_DS_DG": _fmt(rng.random() * 0.2, 2),
+                "SpliceAI_pred_DS_DL": _fmt(rng.random(), 2),
+                "SpliceAI_source": "precomputed"
+                if len(v["ref"]) == 1 and len(v["alt"]) == 1
+                else "BroadAPI_masked_d50",
                 "50_BP_RULE_recomputed": rng.choice(["PASS", "FAIL", "-"]) if high else "-",
-                "LoF": lof, "LoF_filter": "-" if lof != "LC" else "END_TRUNC", "LoF_flags": "-",
+                "LoF": lof,
+                "LoF_filter": "-" if lof != "LC" else "END_TRUNC",
+                "LoF_flags": "-",
                 "LoF_info": "PERCENTILE:0.42,GERP_DIST:123" if lof != "-" else "-",
-                "LoGoFunc_GOF": _fmt(rng.random(), 3), "LoGoFunc_LOF": _fmt(rng.random(), 3),
+                "LoGoFunc_GOF": _fmt(rng.random(), 3),
+                "LoGoFunc_LOF": _fmt(rng.random(), 3),
                 "LoGoFunc_neutral": _fmt(rng.random(), 3),
                 "LoGoFunc_prediction": rng.choice(["GOF", "LOF", "Neutral"]),
                 "PromoterAI_score": _fmt(rng.random() * 0.5, 3) if rng.random() < 0.3 else "-",
             }
-            for k, a in zip(["gnomADe_AFR_AF", "gnomADe_AMR_AF", "gnomADe_EAS_AF", "gnomADe_NFE_AF", "gnomADe_SAS_AF"], e_afs, strict=True):
+            for k, a in zip(
+                ["gnomADe_AFR_AF", "gnomADe_AMR_AF", "gnomADe_EAS_AF", "gnomADe_NFE_AF", "gnomADe_SAS_AF"],
+                e_afs,
+                strict=True,
+            ):
                 base[k] = _fmt(a) if a is not None else "-"
-            for k, a in zip(["gnomADg_AFR_AF", "gnomADg_AMR_AF", "gnomADg_EAS_AF", "gnomADg_NFE_AF", "gnomADg_SAS_AF"], g_afs, strict=True):
+            for k, a in zip(
+                ["gnomADg_AFR_AF", "gnomADg_AMR_AF", "gnomADg_EAS_AF", "gnomADg_NFE_AF", "gnomADg_SAS_AF"],
+                g_afs,
+                strict=True,
+            ):
                 base[k] = _fmt(a) if a is not None else "-"
-            base["SpliceAI_max_DS"] = _fmt(max(float(base[k]) for k in
-                                             ("SpliceAI_pred_DS_AG", "SpliceAI_pred_DS_AL", "SpliceAI_pred_DS_DG", "SpliceAI_pred_DS_DL")), 2)
+            base["SpliceAI_max_DS"] = _fmt(
+                max(
+                    float(base[k])
+                    for k in (
+                        "SpliceAI_pred_DS_AG",
+                        "SpliceAI_pred_DS_AL",
+                        "SpliceAI_pred_DS_DG",
+                        "SpliceAI_pred_DS_DL",
+                    )
+                ),
+                2,
+            )
             mane = dict(base, Feature=tx_mane, MANE_SELECT=f"NM_{100000 + i}.2", CANONICAL="YES")
-            alt = dict(base, Feature=tx_alt, MANE_SELECT="-", CANONICAL="-", HGVSc="-", HGVSp="-",
-                       Consequence="intron_variant", IMPACT="MODIFIER")
+            alt = dict(
+                base,
+                Feature=tx_alt,
+                MANE_SELECT="-",
+                CANONICAL="-",
+                HGVSc="-",
+                HGVSp="-",
+                Consequence="intron_variant",
+                IMPACT="MODIFIER",
+            )
             # write the non-MANE row first so ordering can't mask a wrong pick
             w.writerow(alt)
             w.writerow(mane)

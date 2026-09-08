@@ -26,5 +26,7 @@ jobs:
         run: uv sync --locked --python 3.12
       - name: Lint
         run: uv run ruff check .
+      - name: Types
+        run: uv run mypy
       - name: Tests (synthetic fixture only — no real data in CI)
         run: uv run pytest -q

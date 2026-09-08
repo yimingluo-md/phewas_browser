@@ -90,7 +90,25 @@ Then open <http://localhost:8555>.
 - Gene-page search accepts protein notation in both forms (`Arg158Gln` or `R158Q`);
   1-letter HGVSp is also shown in tables and CSV exports (`hgvsp_short`).
 
-## Rebuild after data updates
+## Importing a dataset (new pipeline)
+
+The `phewas` command builds a self-contained dataset from a sumstats file and stores it in
+the dataset library (`~/Library/Application Support/PheWAS Browser`, override with
+`$PHEWAS_HOME`). The layout is detected from the header; the current meta-analysis file
+matches the built-in `regenie-meta-wide` profile.
+
+```bash
+uv run phewas import 01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz \
+    --annotation data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv \
+    --name "IEI AoU+UKBB meta v9" --build GRCh38
+uv run phewas list                 # datasets in the library (* = current)
+uv run phewas serve                # browse the current dataset on http://127.0.0.1:8555
+uv run phewas import --help        # profiles, dictionaries, memory limit, ...
+```
+
+See `docs/ARCHITECTURE_PLAN.md` and `docs/adr/` for the design.
+
+## Rebuild after data updates (legacy pipeline)
 
 ```bash
 cd /Users/yluo/Work/PheWAS/IEI_haploinsufficiency/phewas_browser

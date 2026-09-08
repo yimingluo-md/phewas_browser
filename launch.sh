@@ -35,7 +35,7 @@ esac
 [ "$PORT" -ge 1024 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null \
     || fail "The configured network port must be between 1024 and 65535."
 
-for required in app.py static/index.html data/phewas.duckdb; do
+for required in app.py static/index.html data/phewas.duckdb packages/phewas_core/phewas_core/__init__.py; do
     [ -f "$DIR/$required" ] \
         || fail "A required browser file is missing: $required. Please re-extract the complete download and try again."
 done

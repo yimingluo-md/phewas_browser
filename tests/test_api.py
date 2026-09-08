@@ -1,4 +1,5 @@
 """HTTP contract of the current FastAPI backend. These pin behaviour before the refactor."""
+
 import math
 
 
@@ -17,7 +18,16 @@ def test_meta(client, synthetic):
     genes = [g["gene"] for g in d["genes"]]
     assert genes == sorted(synthetic["genes"])
     g0 = d["genes"][0]
-    assert {"chrom", "min_pos", "max_pos", "n_variants", "min_p", "top_variant", "top_trait", "top_trait_desc"} <= g0.keys()
+    assert {
+        "chrom",
+        "min_pos",
+        "max_pos",
+        "n_variants",
+        "min_p",
+        "top_variant",
+        "top_trait",
+        "top_trait_desc",
+    } <= g0.keys()
 
 
 def test_search_gene_prefix(client):
@@ -55,8 +65,22 @@ def test_gene_page(client, synthetic):
     n = sum(1 for v in synthetic["variants"] if v["gene"] == "GENEA")
     assert len(d["variants"]) == n
     v = d["variants"][0]
-    for k in ("name", "n_traits", "min_p", "top_trait", "top_or", "n_carriers", "pos", "consequence",
-              "impact", "hgvsc", "hgvsp", "cadd_phred", "lof", "top_trait_desc"):
+    for k in (
+        "name",
+        "n_traits",
+        "min_p",
+        "top_trait",
+        "top_or",
+        "n_carriers",
+        "pos",
+        "consequence",
+        "impact",
+        "hgvsc",
+        "hgvsp",
+        "cadd_phred",
+        "lof",
+        "top_trait_desc",
+    ):
         assert k in v
     positions = [v["pos"] for v in d["variants"]]
     assert positions == sorted(positions)
@@ -74,8 +98,22 @@ def test_variant_page(client, synthetic):
     assert d["annotation"] is not None and d["annotation"]["gene"] == v["gene"]
     assert len(d["associations"]) == len(synthetic["traits"])
     a = d["associations"][0]
-    for k in ("trait", "description", "category", "groupnum", "color", "source", "or_meta", "p_meta",
-              "cases_meta", "casecarr_meta", "or_aou", "p_aou", "or_ukbb", "p_ukbb"):
+    for k in (
+        "trait",
+        "description",
+        "category",
+        "groupnum",
+        "color",
+        "source",
+        "or_meta",
+        "p_meta",
+        "cases_meta",
+        "casecarr_meta",
+        "or_aou",
+        "p_aou",
+        "or_ukbb",
+        "p_ukbb",
+    ):
         assert k in a
     # JSON-safe: no NaN/Inf leaked
     for a in d["associations"]:

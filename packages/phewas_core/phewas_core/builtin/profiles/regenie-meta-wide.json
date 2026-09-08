@@ -1,0 +1,25 @@
+{
+  "profile_version": 1,
+  "name": "regenie-meta-wide",
+  "label": "REGENIE meta-analysis, wide per cohort (meta_IEI_AoU_UKBB layout)",
+  "format": {"delimiter": "\t", "null": ["NA", ""]},
+  "keys": {"variant_id": "Name", "gene": "Gene", "trait": "Trait"},
+  "variant_columns": {"chrom": "Chr", "pos": "Pos", "ref": "Ref", "alt": "Alt"},
+  "variant_id_format": "chr:pos:ref:alt",
+  "strip_chr_prefix": true,
+  "cohort_columns": {
+    "pattern": "^(?P<stat>OR|Pval|Beta|SE|Cases|CaseCarr|Controls|CtrlCarr|AAF|MAC)_(?P<cohort>[A-Za-z0-9]+)$",
+    "stat_map": {"OR": "or", "Pval": "p", "Beta": "beta", "SE": "se", "Cases": "cases",
+                 "CaseCarr": "case_carriers", "Controls": "controls", "CtrlCarr": "ctrl_carriers",
+                 "AAF": "aaf", "MAC": "mac"}
+  },
+  "meta_columns": {
+    "cohort_id": "META", "label": "Meta-analysis",
+    "map": {"Meta_OR": "or", "Meta_Pval": "p", "Beta_Meta": "beta",
+            "Total_Cases": "cases", "Total_Case_Carriers": "case_carriers",
+            "Total_Controls": "controls", "Total_Ctrl_Carriers": "ctrl_carriers"}
+  },
+  "cohort_labels": {"AoU": "All of Us", "UKBB": "UK Biobank"},
+  "trait_filter": "in_dictionary",
+  "required_columns": ["Name", "Gene", "Trait", "Meta_Pval"]
+}

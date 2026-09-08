@@ -1,4 +1,5 @@
 """The import pipeline on synthetic inputs: row accounting and the tricky transforms."""
+
 import duckdb
 import pytest
 
@@ -33,14 +34,20 @@ def test_annotation_one_row_per_variant_gene_and_mane_preferred(synthetic, con):
     n = con.sql("SELECT count(*) FROM annotation").fetchone()[0]
     assert n == len(synthetic["variants"])
     assert con.sql("SELECT count(*) FROM annotation WHERE mane_select IS NULL").fetchone()[0] == 0
-    assert con.sql("SELECT count(*) FROM annotation WHERE consequence = 'intron_variant' AND impact = 'MODIFIER' AND hgvsc IS NULL").fetchone()[0] == 0, \
-        "the non-MANE transcript row was picked"
+    assert (
+        con.sql(
+            "SELECT count(*) FROM annotation WHERE consequence = 'intron_variant' AND impact = 'MODIFIER' AND hgvsc IS NULL"
+        ).fetchone()[0]
+        == 0
+    ), "the non-MANE transcript row was picked"
 
 
 def test_chr_prefix_is_stripped_and_every_variant_annotated(con):
     assert con.sql("SELECT count(*) FROM annotation WHERE name LIKE 'chr%'").fetchone()[0] == 0
     missing = con.sql("""SELECT count(*) FROM variant_index v WHERE NOT EXISTS
-                         (SELECT 1 FROM annotation a WHERE a.name = v.name AND a.gene = v.gene)""").fetchone()[0]
+                         (SELECT 1 FROM annotation a WHERE a.name = v.name AND a.gene = v.gene)""").fetchone()[
+        0
+    ]
     assert missing == 0
 
 
@@ -55,7 +62,12 @@ def test_dbnsfp_collapsing(con):
     r = con.sql("""SELECT count(*) FROM annotation
                    WHERE revel_score IS NOT NULL AND (revel_score < 0 OR revel_score > 1)""").fetchone()[0]
     assert r == 0
-    preds = [r[0] for r in con.sql("SELECT alphamissense_pred FROM annotation WHERE alphamissense_pred IS NOT NULL").fetchall()]
+    preds = [
+        r[0]
+        for r in con.sql(
+            "SELECT alphamissense_pred FROM annotation WHERE alphamissense_pred IS NOT NULL"
+        ).fetchall()
+    ]
     assert preds, "expected some AlphaMissense predictions"
     assert all("." not in p and "&" not in p for p in preds)
 

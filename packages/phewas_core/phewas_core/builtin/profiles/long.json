@@ -1,0 +1,15 @@
+{
+  "profile_version": 1,
+  "name": "long",
+  "label": "Long format: one row per variant, trait and cohort",
+  "format": {"delimiter": "\t", "null": ["NA", ""]},
+  "keys": {"variant_id": "variant_id", "gene": "gene", "trait": "trait", "cohort": "cohort"},
+  "variant_id_format": "chr:pos:ref:alt",
+  "strip_chr_prefix": true,
+  "stat_columns": {"or": "or", "p": "p", "beta": "beta", "se": "se", "cases": "cases",
+                   "case_carriers": "case_carriers", "controls": "controls", "ctrl_carriers": "ctrl_carriers",
+                   "aaf": "aaf", "mac": "mac"},
+  "meta_cohort_ids": ["META", "Meta", "meta"],
+  "trait_filter": "in_dictionary",
+  "required_columns": ["variant_id", "gene", "trait", "cohort", "p"]
+}

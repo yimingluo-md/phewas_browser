@@ -29,7 +29,7 @@ require_file() {
     }
 }
 
-for required in app.py launch.sh static/index.html data/phewas.duckdb; do
+for required in app.py launch.sh static/index.html data/phewas.duckdb packages/phewas_core/phewas_core/__init__.py; do
     require_file "$required"
 done
 /bin/mkdir -p "$OUT_DIR"
@@ -52,6 +52,7 @@ build_mac() {
     copy_item "$ROOT/requirements.txt" "$payload/requirements.txt"
     copy_item "$ROOT/requirements.lock.txt" "$payload/requirements.lock.txt"
     copy_item "$ROOT/static" "$payload/static"
+    copy_item "$ROOT/packages" "$payload/packages"
     copy_item "$ROOT/data" "$payload/data"
     copy_item "$ROOT/macos" "$payload/macos"
     copy_item "$ROOT/Stop PheWAS Browser.command" "$folder/Stop IEI PheWAS Browser.command"
@@ -73,6 +74,7 @@ build_windows() {
 
     copy_item "$ROOT/app.py" "$folder/app.py"
     copy_item "$ROOT/static" "$folder/static"
+    copy_item "$ROOT/packages" "$folder/packages"
     copy_item "$ROOT/data" "$folder/data"
     copy_item "$ROOT/windows" "$folder/windows"
     copy_item "$ROOT/Launch PheWAS Browser (Windows).bat" "$folder/Launch IEI PheWAS Browser.bat"

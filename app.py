@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Local PheWAS browser for IEI variant-level AoU+UKBB meta-analysis.
+"""Local PheWAS browser — FastAPI backend.
 
-Run:  ./launch.sh
-Then open http://localhost:8555
+Serves either a phewas_core dataset (schema v1, built by `phewas import`) or, during the
+transition, a legacy database built by scripts/build_db.py. The database is chosen by:
+
+    PHEWAS_DATASET   dataset id, id prefix, or dataset directory in the phewas_core library
+    IEI_PHEWAS_DB    path to a DuckDB file (either layout)
+    data/phewas.duckdb next to this file (legacy default), else the library's current dataset
+
+Run:  ./launch.sh   or   phewas serve
 """
 import math
 import os
+import sys
 import threading
 
 import duckdb
@@ -14,17 +21,43 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-# IEI_PHEWAS_DB lets tests and future launchers point the server at another database.
-DB = os.environ.get("IEI_PHEWAS_DB") or os.path.join(BASE, "data", "phewas.duckdb")
+# The bundled offline runtimes (launch.sh / the .bat) do not pip-install phewas_core;
+# in a source checkout or a bundle the package sits next to this file.
+_CORE_SRC = os.path.join(BASE, "packages", "phewas_core")
+if os.path.isdir(_CORE_SRC) and _CORE_SRC not in sys.path:
+    sys.path.insert(0, _CORE_SRC)
 
+from phewas_core import legacy_api  # noqa: E402
+from phewas_core.query import Dataset, DatasetNotFoundError  # noqa: E402
+from phewas_core.registry import Library  # noqa: E402
+from phewas_core.schema import is_v1_dataset  # noqa: E402
+
+
+def resolve_db_path() -> str:
+    if os.environ.get("PHEWAS_DATASET"):
+        return str(Library().get(os.environ["PHEWAS_DATASET"]).db_path)
+    if os.environ.get("IEI_PHEWAS_DB"):
+        return os.environ["IEI_PHEWAS_DB"]
+    legacy = os.path.join(BASE, "data", "phewas.duckdb")
+    if os.path.exists(legacy):
+        return legacy
+    cur = Library().current()
+    if cur is None:
+        raise SystemExit("No database found: set PHEWAS_DATASET / IEI_PHEWAS_DB or run `phewas import`.")
+    return str(cur.db_path)
+
+
+DB = resolve_db_path()
 app = FastAPI(title="IEI PheWAS Browser")
 
 _con = duckdb.connect(DB, read_only=True)
 _lock = threading.Lock()
+DS: Dataset | None = Dataset(DB) if is_v1_dataset(_con) else None
+BACKEND = "phewas_core" if DS else "legacy"
 
 
 def q(sql, params=None):
-    """Run a query, return list-of-dicts with JSON-safe floats."""
+    """Run a query on the legacy database, return list-of-dicts with JSON-safe floats."""
     with _lock:
         cur = _con.execute(sql, params or [])
         cols = [d[0] for d in cur.description]
@@ -50,6 +83,8 @@ def health():
 # ---------------------------------------------------------------- meta
 @app.get("/api/meta")
 def meta():
+    if DS:
+        return legacy_api.meta(DS)
     genes = q("""
         SELECT gene, chrom, min_pos, max_pos, n_variants, min_p, top_variant, top_trait,
                p.description AS top_trait_desc
@@ -69,6 +104,8 @@ def meta():
 # ---------------------------------------------------------------- search
 @app.get("/api/search")
 def search(term: str = Query(..., min_length=1)):
+    if DS:
+        return legacy_api.search(DS, term)
     term = term.strip()
     results = []
 
@@ -100,6 +137,11 @@ def search(term: str = Query(..., min_length=1)):
 # ---------------------------------------------------------------- gene page
 @app.get("/api/gene/{gene}")
 def gene_page(gene: str):
+    if DS:
+        try:
+            return legacy_api.gene_page(DS, gene)
+        except DatasetNotFoundError as e:
+            raise HTTPException(404, str(e)) from None
     summary = q("""
         SELECT g.*, p.description AS top_trait_desc
         FROM gene_summary g LEFT JOIN phecode p ON p.phecode = g.top_trait
@@ -128,6 +170,11 @@ def gene_page(gene: str):
 # ---------------------------------------------------------------- variant page
 @app.get("/api/variant/{name}")
 def variant_page(name: str, gene: str = Query(None)):
+    if DS:
+        try:
+            return legacy_api.variant_page(DS, name, gene)
+        except DatasetNotFoundError as e:
+            raise HTTPException(404, str(e)) from None
     name = name.replace("chr", "") if name.lower().startswith("chr") else name
     if gene is None:
         hit = q("SELECT gene FROM variant_index WHERE name = ? LIMIT 1", [name])

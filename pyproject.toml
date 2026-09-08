@@ -10,6 +10,7 @@ dependencies = [
     "duckdb==1.5.5",
     "fastapi==0.141.1",
     "uvicorn==0.52.4",
+    "phewas-core",
 ]
 
 [dependency-groups]
@@ -24,6 +25,12 @@ dev = [
 # The bundled runtimes are built from requirements.lock.txt; keep both in step.
 package = false
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+phewas-core = { workspace = true }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
@@ -32,7 +39,7 @@ filterwarnings = ["error::DeprecationWarning:phewas.*"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["macos", "windows", "dist", "static", "legacy"]
+extend-exclude = ["macos", "windows", "dist", "static", "legacy", "benchmarks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "N", "RUF"]
@@ -41,5 +48,5 @@ ignore = ["E501"]  # long SQL strings
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["packages", "tests"]
+files = ["packages"]
 ignore_missing_imports = true

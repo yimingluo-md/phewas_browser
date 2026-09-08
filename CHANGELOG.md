@@ -3,7 +3,38 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased] — Phase 0: foundations
+## [Unreleased] — Phase 1: core extraction
+
+### Added
+- `packages/phewas_core`: the new engine, no web dependencies.
+  - `schema.py` — schema v1: cohort-agnostic **long** `assoc` table (ADR-0001), `cohort`, `trait`,
+    `variant`, wide `annotation` generated from the field registry, derived `variant_index` /
+    `gene_summary` / `rsid_map`, embedded manifest.
+  - `fields.py` — the annotation field registry (53 fields); importer SQL, API metadata and
+    future UI columns all derive from it.
+  - `profiles.py` + `builtin/profiles/` — JSON import profiles; `regenie-meta-wide` matches the
+    current meta-analysis layout exactly, `long` accepts one row per variant/trait/cohort.
+    Header auto-detection.
+  - `dictionaries.py` — built-in phecode v1.2; any `trait,description[,category,category_ord,color]` CSV.
+  - `importer.py` — sniff → stage (sorted) → variants/cohorts → chunked unpivot with progress →
+    VEP annotation → derived tables → manifest with source hashes → atomic finalize.
+    Memory bounded by DuckDB `memory_limit` (default half of RAM).
+  - `registry.py` — the dataset library (`registry.json`, `datasets/<id>/{manifest.json,dataset.duckdb,import.log}`)
+    under `~/Library/Application Support/PheWAS Browser` (`$PHEWAS_HOME` overrides). Immutable
+    datasets; previous versions kept until removed.
+  - `query.py` — cohort-/field-agnostic query layer (per-cohort stats as `{cohort: {stat: value}}`).
+  - `legacy_api.py` — adapter producing today's JSON shapes so the unchanged frontend works.
+  - `cli.py` — `phewas import | list | info | current | remove | profiles | serve`.
+- `docs/adr/0001-storage-layout.md` with the benchmark on the real dataset (`benchmarks/storage_layout/`).
+- Tests: 53 total — API contract now runs against **both** the legacy database and a phewas_core
+  dataset, plus value-for-value equivalence tests and core unit/integration tests.
+
+### Changed
+- `app.py` serves a phewas_core dataset when given one (`PHEWAS_DATASET`, `IEI_PHEWAS_DB`, or the
+  library's current dataset) and still serves the legacy `data/phewas.duckdb`. Bundles now ship
+  `packages/` (make_bundle.sh, launch.sh updated).
+
+## [0.2.0] — 2026-09-07 — Phase 0: foundations
 
 ### Added
 - Git repository, `.gitignore` excluding databases, bundled runtimes and builds.
