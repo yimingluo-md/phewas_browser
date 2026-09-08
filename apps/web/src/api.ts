@@ -5,12 +5,14 @@ import type {
 } from "./types";
 
 const TOKEN_KEY = "phewas.token";
+let launchToken = "";
 
 /** The token arrives once in the URL (?token=…) from the launcher; keep it out of the address bar. */
 export function initToken(): void {
   const url = new URL(location.href);
   const t = url.searchParams.get("token");
   if (t) {
+    launchToken = t;
     try { sessionStorage.setItem(TOKEN_KEY, t); localStorage.setItem(TOKEN_KEY, t); } catch { /* private mode */ }
     url.searchParams.delete("token");
     history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -18,6 +20,7 @@ export function initToken(): void {
 }
 
 function token(): string {
+  if (launchToken) return launchToken;
   try { return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; }
 }
 
@@ -66,24 +69,34 @@ export const api = {
 };
 
 /** Follow a job's SSE stream; resolves with the final snapshot. */
-export function watchJob(id: string, onEvent: (j: Job) => void, after = 0): Promise<Job> {
+export function watchJob(id: string, onEvent: (j: Job) => void, after = 0, signal?: AbortSignal): Promise<Job> {
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/api/v1/jobs/${q(id)}/events?after=${after}&token=${q(token())}`);
-    let last: Job | null = null;
+    let timer: number | undefined;
+    let settled = false;
+    const cleanup = () => { settled = true; es.close(); clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+    const abort = () => { cleanup(); reject(new DOMException("Navigation changed", "AbortError")); };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
+    const receive = (job: Job) => {
+      if (settled) return;
+      onEvent(job);
+      if (["done", "failed", "cancelled"].includes(job.status)) { cleanup(); resolve(job); }
+    };
+    const poll = async () => {
+      try {
+        receive(await api.job(id));
+        if (!settled) timer = window.setTimeout(() => void poll(), 500);
+      } catch (e) { if (!settled) { cleanup(); reject(e); } }
+    };
     es.onmessage = (ev) => {
       const e = JSON.parse(ev.data);
       if (e.keepalive) return;
-      last = e as Job;
-      onEvent(last);
-      if (last.status === "done" || last.status === "failed" || last.status === "cancelled") {
-        es.close();
-        resolve(last);
-      }
+      receive(e as Job);
     };
     es.onerror = () => {
       es.close();
-      if (last && (last.status === "done" || last.status === "failed" || last.status === "cancelled")) resolve(last);
-      else api.job(id).then(resolve, reject);
+      if (!settled) void poll();
     };
   });
 }

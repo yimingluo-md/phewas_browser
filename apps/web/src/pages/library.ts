@@ -6,6 +6,7 @@ import { invalidateLibrary, loadLibrary, setActive } from "../state";
 
 export async function renderLibrary($app: HTMLElement): Promise<void> {
   const lib = await loadLibrary(true);
+  if (!$app.isConnected) return;
   setActive(null);
   if (!lib.datasets.length) {
     $app.innerHTML = `

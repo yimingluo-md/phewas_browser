@@ -16,6 +16,7 @@ from __future__ import annotations
 import builtins
 import json
 import shutil
+import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,7 @@ class Library:
         self.home = Path(home) if home else default_home()
         self.datasets_dir = self.home / "datasets"
         self.registry_path = self.home / "registry.json"
+        self._lock = threading.RLock()
 
     # ---- registry file -------------------------------------------------
     def _read(self) -> dict[str, Any]:
@@ -66,39 +68,43 @@ class Library:
 
     # ---- queries --------------------------------------------------------
     def list(self) -> list[DatasetRef]:
-        reg = self._read()
-        refs = []
-        for did in reg["datasets"]:
-            d = self.datasets_dir / did
-            if (d / MANIFEST_FILENAME).exists() and (d / DB_FILENAME).exists():
-                refs.append(DatasetRef(did, d))
-        return refs
+        with self._lock:
+            reg = self._read()
+            refs = []
+            for did in reg["datasets"]:
+                d = self.datasets_dir / did
+                if (d / MANIFEST_FILENAME).exists() and (d / DB_FILENAME).exists():
+                    refs.append(DatasetRef(did, d))
+            return refs
 
     def get(self, id_or_prefix: str) -> DatasetRef:
-        p = Path(id_or_prefix)
-        if p.is_dir() and (p / MANIFEST_FILENAME).exists():
-            return DatasetRef(p.name, p)
-        hits = [r for r in self.list() if r.id == id_or_prefix or r.id.startswith(id_or_prefix)]
-        if len(hits) == 1:
-            return hits[0]
-        if not hits:
-            raise KeyError(f"no dataset {id_or_prefix!r} in {self.home}")
-        raise KeyError(f"ambiguous dataset id {id_or_prefix!r}: {[h.id for h in hits]}")
+        with self._lock:
+            p = Path(id_or_prefix)
+            if p.is_dir() and (p / MANIFEST_FILENAME).exists():
+                return DatasetRef(p.name, p)
+            hits = [r for r in self.list() if r.id == id_or_prefix or r.id.startswith(id_or_prefix)]
+            if len(hits) == 1:
+                return hits[0]
+            if not hits:
+                raise KeyError(f"no dataset {id_or_prefix!r} in {self.home}")
+            raise KeyError(f"ambiguous dataset id {id_or_prefix!r}: {[h.id for h in hits]}")
 
     def current(self) -> DatasetRef | None:
-        reg = self._read()
-        if reg.get("current"):
-            try:
-                return self.get(reg["current"])
-            except KeyError:
-                pass
-        refs = self.list()
-        return refs[0] if refs else None
+        with self._lock:
+            reg = self._read()
+            if reg.get("current"):
+                try:
+                    return self.get(reg["current"])
+                except KeyError:
+                    pass
+            refs = self.list()
+            return refs[0] if refs else None
 
     def set_current(self, dataset_id: str) -> None:
-        reg = self._read()
-        reg["current"] = self.get(dataset_id).id
-        self._write(reg)
+        with self._lock:
+            reg = self._read()
+            reg["current"] = self.get(dataset_id).id
+            self._write(reg)
 
     # ---- lifecycle ------------------------------------------------------
     def new_id(self) -> str:
@@ -113,43 +119,47 @@ class Library:
 
     def finalize(self, dataset_id: str, make_current: bool = True) -> DatasetRef:
         """Atomically move datasets/<id>.partial into place and register it."""
-        partial = self.datasets_dir / f"{dataset_id}.partial"
-        final = self.datasets_dir / dataset_id
-        if not (partial / MANIFEST_FILENAME).exists():
-            raise FileNotFoundError(f"{partial} has no manifest; import did not finish")
-        partial.rename(final)
-        reg = self._read()
-        if dataset_id not in reg["datasets"]:
-            reg["datasets"].append(dataset_id)
-        if make_current or not reg.get("current"):
-            reg["current"] = dataset_id
-        self._write(reg)
-        return DatasetRef(dataset_id, final)
+        with self._lock:
+            partial = self.datasets_dir / f"{dataset_id}.partial"
+            final = self.datasets_dir / dataset_id
+            if not (partial / MANIFEST_FILENAME).exists():
+                raise FileNotFoundError(f"{partial} has no manifest; import did not finish")
+            partial.rename(final)
+            reg = self._read()
+            if dataset_id not in reg["datasets"]:
+                reg["datasets"].append(dataset_id)
+            if make_current or not reg.get("current"):
+                reg["current"] = dataset_id
+            self._write(reg)
+            return DatasetRef(dataset_id, final)
 
     def update_manifest(
         self, id_or_prefix: str, *, name: str | None = None, notes: str | None = None
     ) -> Manifest:
         """Edit the user-facing fields of a dataset's manifest.json (the database copy is untouched)."""
-        ref = self.get(id_or_prefix)
-        m = ref.manifest()
-        if name is not None and name.strip():
-            m.name = name.strip()
-        if notes is not None:
-            m.notes = notes
-        m.save(ref.manifest_path)
-        return m
+        with self._lock:
+            ref = self.get(id_or_prefix)
+            m = ref.manifest()
+            if name is not None and name.strip():
+                m.name = name.strip()
+            if notes is not None:
+                m.notes = notes
+            m.save(ref.manifest_path)
+            return m
 
     def reorder(self, ids: builtins.list[str]) -> None:
-        reg = self._read()
-        known = [r.id for r in self.list()]
-        reg["datasets"] = [i for i in ids if i in known] + [i for i in known if i not in ids]
-        self._write(reg)
+        with self._lock:
+            reg = self._read()
+            known = [r.id for r in self.list()]
+            reg["datasets"] = list(dict.fromkeys([i for i in ids if i in known] + known))
+            self._write(reg)
 
     def remove(self, id_or_prefix: str) -> None:
-        ref = self.get(id_or_prefix)
-        shutil.rmtree(ref.dir)
-        reg = self._read()
-        reg["datasets"] = [d for d in reg["datasets"] if d != ref.id]
-        if reg.get("current") == ref.id:
-            reg["current"] = reg["datasets"][0] if reg["datasets"] else None
-        self._write(reg)
+        with self._lock:
+            ref = self.get(id_or_prefix)
+            shutil.rmtree(ref.dir)
+            reg = self._read()
+            reg["datasets"] = [d for d in reg["datasets"] if d != ref.id]
+            if reg.get("current") == ref.id:
+                reg["current"] = reg["datasets"][0] if reg["datasets"] else None
+            self._write(reg)

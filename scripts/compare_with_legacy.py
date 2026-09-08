@@ -38,8 +38,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     con = duckdb.connect()
     con.execute("SET memory_limit='2GB'")
-    con.execute(f"ATTACH '{a.legacy_db}' AS L (READ_ONLY)")
-    con.execute(f"ATTACH '{ref.db_path}' AS N (READ_ONLY)")
+    legacy_path = a.legacy_db.replace("'", "''")
+    dataset_path = str(ref.db_path).replace("'", "''")
+    con.execute(f"ATTACH '{legacy_path}' AS L (READ_ONLY)")
+    con.execute(f"ATTACH '{dataset_path}' AS N (READ_ONLY)")
     primary = con.execute("SELECT id FROM N.cohort WHERE is_primary").fetchone()[0]
     print(f"legacy: {a.legacy_db}\nnew:    {ref.db_path} (primary cohort {primary})\n")
     fails = 0
@@ -55,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     def num_diff(x: str, y: str) -> str:
         # legacy stores Inf/NaN (diverged fits) where the new schema stores NULL: both count as missing
         lx = f"(CASE WHEN isfinite({x}) THEN {x} END)"
-        return f"NOT ((({lx}) IS NULL AND ({y}) IS NULL) OR abs(({lx}) - ({y})) <= {TOL} * greatest(1, abs({lx})))"
+        # SQL UNKNOWN must count as a mismatch: one side NULL and the other a number.
+        return f"NOT coalesce((({lx}) IS NULL AND ({y}) IS NULL) OR abs(({lx}) - ({y})) <= {TOL} * greatest(1, abs({lx})), false)"
 
     # ---- counts -------------------------------------------------------
     # legacy keeps VEP rows without a gene symbol (never joined to anything); the new schema drops them
@@ -148,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         check(f"assoc {cid:5} ({a.sample} sampled variants, all traits)", d)
 
     print("\nRESULT:", "identical" if fails == 0 else f"{fails} check(s) differ")
+    con.close()
     return 1 if fails else 0
 
 

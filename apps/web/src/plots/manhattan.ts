@@ -3,8 +3,9 @@ import type Plotly from "plotly.js-dist-min";
 import { catColor, neglog10 } from "../format";
 import type { Association } from "../types";
 
-export async function drawManhattan(elId: string, assoc: Association[], cohort: string, bonf: number | null): Promise<void> {
+export async function drawManhattan(element: HTMLElement, assoc: Association[], cohort: string, bonf: number | null): Promise<void> {
   const Plotly = (await import("plotly.js-dist-min")).default; // 4.8 MB, loaded on first variant page only
+  if (!element.isConnected) return;
   const sorted = assoc.slice().sort((a, b) =>
     ((a.category_ord ?? 999) - (b.category_ord ?? 999)) || (parseFloat(a.trait) - parseFloat(b.trait)));
   const x = new Map<Association, number>();
@@ -51,7 +52,7 @@ export async function drawManhattan(elId: string, assoc: Association[], cohort: 
     line: { dash: "dash", color: "#b3261e", width: 1 },
   }] : [];
 
-  await Plotly.newPlot(elId, traces, {
+  await Plotly.newPlot(element, traces, {
     margin: { l: 55, r: 10, t: 8, b: 110 },
     xaxis: {
       tickvals: catTicks.map((t) => t.mid),

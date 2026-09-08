@@ -17,7 +17,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -103,6 +103,14 @@ def sniff_header(con: duckdb.DuckDBPyConnection, path: Path, delimiter: str) -> 
     return [r[0] for r in rows]
 
 
+def sniff_delimiter(con: duckdb.DuckDBPyConnection, path: Path, delimiter: str) -> tuple[list[str], str]:
+    header = sniff_header(con, path, delimiter)
+    if delimiter == "\t" and len(header) == 1 and "," in header[0]:
+        delimiter = ","
+        header = sniff_header(con, path, delimiter)
+    return header, delimiter
+
+
 def _q(col: str) -> str:
     return '"' + col.replace('"', '""') + '"'
 
@@ -177,14 +185,15 @@ class Importer:
         dataset_id = self.lib.new_id()
         partial = self.lib.partial_dir(dataset_id)
         self.log_file = open(partial / "import.log", "w", encoding="utf-8")  # noqa: SIM115
+        con = None
         try:
             self.log(f"phewas_core {__version__} · duckdb {duckdb.__version__} · dataset {dataset_id}")
             self.log(f"sumstats: {req.sumstats}")
             con = duckdb.connect(str(partial / DB_FILENAME))
             tmp = partial / "tmp"
             tmp.mkdir()
-            con.execute(f"SET temp_directory='{tmp}'")
-            con.execute(f"SET memory_limit='{req.memory_limit or default_memory_limit()}'")
+            con.execute("SET temp_directory = ?", [str(tmp)])
+            con.execute("SET memory_limit = ?", [req.memory_limit or default_memory_limit()])
             if req.threads:
                 con.execute(f"SET threads={req.threads}")
             con.execute("SET preserve_insertion_order=true")
@@ -194,6 +203,11 @@ class Importer:
             self.step("sniff", 0, 1, "reading header")
             header = self._sniff(con)
             profile = self._resolve_profile(header)
+            profile = replace(profile, delimiter=self.delimiter)
+            if profile.kind == "long":
+                profile = replace(
+                    profile, stat_columns={s: c for s, c in profile.stat_columns.items() if c in header}
+                )
             cohorts = profile.cohorts_for_header(header) if profile.kind == "wide" else []
             self.log(
                 f"profile: {profile.name} ({profile.kind}); cohorts: {[c.id for c in cohorts] or 'from data'}"
@@ -244,15 +258,22 @@ class Importer:
             # 8. manifest
             self.step("finalize", 0, 1, "hashing sources and writing manifest")
             manifest = self._manifest(con, dataset_id, profile, cohort_rows, dictionary, n_ann)
+            self.step("finalize", 1, 1, "writing manifest")
             con.execute("INSERT INTO meta VALUES ('manifest', ?)", [manifest.dumps()])
             con.execute("CHECKPOINT")
             con.close()
+            con = None
             manifest.save(partial / MANIFEST_FILENAME)
             for p in tmp.iterdir():
                 p.unlink()
             tmp.rmdir()
             self.log(f"done in {time.time() - self.t0:.1f}s")
-        except BaseException:
+        except BaseException as e:
+            # Windows cannot remove the partial database while DuckDB still holds it open.
+            if con is not None:
+                con.close()
+                con = None
+            self.log(f"{type(e).__name__}: {e}")
             if self.log_file is not None:
                 self.log_file.close()
                 self.log_file = None
@@ -277,9 +298,7 @@ class Importer:
         delim = "\t"
         if self.req.profile:
             delim = get_profile(self.req.profile, self.lib.home).delimiter
-        header = sniff_header(con, Path(self.req.sumstats), delim)
-        if len(header) == 1 and delim == "\t" and "," in header[0]:
-            header = sniff_header(con, Path(self.req.sumstats), ",")
+        header, self.delimiter = sniff_delimiter(con, Path(self.req.sumstats), delim)
         self.log(f"header: {len(header)} columns")
         return header
 
@@ -315,7 +334,7 @@ class Importer:
             else sorted(profile.stat_columns.values())
         )
         select += [_q(c) for c in stat_cols]
-        types_sql = "{" + ", ".join(f"'{c}': '{t}'" for c, t in types.items()) + "}"
+        types_sql = "{" + ", ".join("'" + c.replace("'", "''") + f"': '{t}'" for c, t in types.items()) + "}"
         nulls_sql = "[" + ", ".join("'" + n.replace("'", "''") + "'" for n in profile.nulls) + "]"
         where = "WHERE trait IN (SELECT trait FROM trait)" if profile.trait_filter == "in_dictionary" else ""
         order = "gene, variant_id, trait" + (", cohort" if profile.kind == "long" else "")
@@ -417,7 +436,8 @@ class Importer:
                     col = spec.columns.get(stat)
                     cols.append(f"{_finite(col, stat)} AS {_q(stat)}" if col else f"NULL AS {_q(stat)}")
                 present = " OR ".join(f"{_q(c)} IS NOT NULL" for c in spec.columns.values())
-                parts.append(f"""SELECT variant_id, gene, trait, '{spec.id}' AS cohort, {", ".join(cols)}
+                cohort_id = spec.id.replace("'", "''")
+                parts.append(f"""SELECT variant_id, gene, trait, '{cohort_id}' AS cohort, {", ".join(cols)}
                                  FROM stage WHERE gene = ? AND variant_id BETWEEN ? AND ? AND ({present})""")
             body = " UNION ALL ".join(parts)
             nparams = len(cohorts)
@@ -514,7 +534,7 @@ class Importer:
         if req.hash_sources:
             for s in sources:
                 if Path(s.path).exists():
-                    s.sha256 = sha256_of(Path(s.path), self.progress)
+                    s.sha256 = sha256_of(Path(s.path), self.step)
         return Manifest(
             id=dataset_id,
             name=req.name,
@@ -554,9 +574,7 @@ def inspect_sumstats(path: Path, home: Path | None = None, profile_name: str | N
     try:
         profile = get_profile(profile_name, home) if profile_name else None
         delim = profile.delimiter if profile else "\t"
-        header = sniff_header(con, path, delim)
-        if len(header) == 1 and "," in header[0]:
-            header = sniff_header(con, path, ",")
+        header, delim = sniff_delimiter(con, path, delim)
         if profile is None:
             profile = match_profile(header, home)
         problems: list[str] = []
@@ -591,6 +609,8 @@ def inspect_sumstats(path: Path, home: Path | None = None, profile_name: str | N
             "preview": [dict(zip(header, r, strict=True)) for r in preview],
             "problems": problems,
         }
+    except (OSError, duckdb.Error, ProfileError) as e:
+        return {"path": str(path), "exists": path.exists(), "problems": [str(e)]}
     finally:
         con.close()
 
@@ -605,6 +625,8 @@ def inspect_annotation(path: Path) -> dict[str, Any]:
     con = duckdb.connect()
     try:
         header = vep_header(con, path)
+    except (OSError, duckdb.Error) as e:
+        return {"path": str(path), "exists": path.exists(), "problems": [str(e)]}
     finally:
         con.close()
     problems = [

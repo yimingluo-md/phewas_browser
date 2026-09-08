@@ -75,9 +75,11 @@ class Job:
                         return
                     self._cond.wait(timeout)
                     pending = [e for e in self._events if e["seq"] > last]
-                    if not pending:
-                        yield {"seq": last, "keepalive": True}
-                        continue
+            if not pending:
+                # Never suspend the generator holding the condition: a slow SSE client
+                # must not prevent the importer from publishing its next update.
+                yield {"seq": last, "keepalive": True}
+                continue
             for e in pending:
                 last = e["seq"]
                 yield e

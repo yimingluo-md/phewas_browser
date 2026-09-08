@@ -6,7 +6,7 @@
 //! instance, and kills the sidecar on quit. Nothing here knows about genes or variants.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 
 use rand::{distributions::Alphanumeric, Rng};
@@ -19,6 +19,10 @@ const SIDECAR_NAME: &str = "phewas-server";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct Sidecar(Mutex<Option<CommandChild>>);
+struct LibraryHome(Mutex<Option<PathBuf>>);
+/// Set when the app itself stops the sidecar (quit, close, startup timeout), so its
+/// termination is not mistaken for a crash.
+struct Quitting(AtomicBool);
 
 fn token() -> String {
     rand::thread_rng().sample_iter(&Alphanumeric).take(40).map(char::from).collect()
@@ -94,38 +98,62 @@ fn start_sidecar(app: &AppHandle, win: WebviewWindow) -> Result<(), String> {
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("could not start the data server: {e}"))?;
     app.state::<Sidecar>().0.lock().unwrap().replace(child);
 
+    // Check the deadline independently: a silent child produces no events to wake rx.recv().
+    let startup_done = Arc::new(AtomicBool::new(false));
+    let timeout_done = startup_done.clone();
+    let timeout_win = win.clone();
+    let timeout_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio_sleep(STARTUP_TIMEOUT).await;
+        if !timeout_done.swap(true, Ordering::SeqCst) {
+            show_error(&timeout_win, "The data server did not start within 60 seconds.");
+            kill_sidecar(&timeout_app);
+        }
+    });
+
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         use std::io::Write;
         let mut log = std::fs::File::create(&log_path).ok();
         let mut navigated = false;
-        let started = std::time::Instant::now();
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
                     let line = String::from_utf8_lossy(&bytes).to_string();
                     if let Some(f) = log.as_mut() {
-                        let _ = f.write_all(line.as_bytes());
+                        let _ = f.write_all(line.trim_end_matches(['\r', '\n']).as_bytes());
+                        let _ = f.write_all(b"\n");
+                    }
+                    if let Some(home) = line.trim().strip_prefix("PHEWAS_HOME=") {
+                        app2.state::<LibraryHome>().0.lock().unwrap().replace(PathBuf::from(home));
                     }
                     if !navigated {
                         if let Some(url) = line.trim().strip_prefix("PHEWAS_URL=") {
                             if let Ok(u) = url.parse() {
-                                navigated = true;
-                                let _ = win.navigate(u);
+                                if !startup_done.swap(true, Ordering::SeqCst) {
+                                    match win.navigate(u) {
+                                        Ok(()) => navigated = true,
+                                        Err(e) => show_error(&win, &format!("Could not open the browser: {e}")),
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 CommandEvent::Terminated(status) => {
+                    if app2.state::<Quitting>().0.load(Ordering::SeqCst) {
+                        break; // we stopped it ourselves
+                    }
                     let msg = format!(
                         "The data server stopped (exit code {:?}). See the log: {}",
                         status.code,
                         log_path.display()
                     );
                     log::error!("{msg}");
-                    if !navigated {
+                    let already_finished = startup_done.swap(true, Ordering::SeqCst);
+                    if !navigated && !already_finished {
                         show_error(&win, &msg);
-                    } else {
+                    } else if navigated {
                         // the UI is gone with it; quit so the user can relaunch cleanly
                         app2.exit(1);
                     }
@@ -136,15 +164,13 @@ fn start_sidecar(app: &AppHandle, win: WebviewWindow) -> Result<(), String> {
                 }
                 _ => {}
             }
-            if !navigated && started.elapsed() > STARTUP_TIMEOUT {
-                show_error(&win, "The data server did not start within 60 seconds.");
-            }
         }
     });
     Ok(())
 }
 
 fn kill_sidecar(app: &AppHandle) {
+    app.state::<Quitting>().0.store(true, Ordering::SeqCst);
     if let Some(child) = app.state::<Sidecar>().0.lock().unwrap().take() {
         let _ = child.kill();
     }
@@ -216,6 +242,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(None)))
+        .manage(LibraryHome(Mutex::new(None)))
+        .manage(Quitting(AtomicBool::new(false)))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
@@ -242,7 +270,8 @@ pub fn run() {
                     }
                 }
                 "data_dir" => {
-                    if let Ok(dir) = app.path().app_data_dir() {
+                    let home = app.state::<LibraryHome>().0.lock().unwrap().clone();
+                    if let Some(dir) = home {
                         let _ = std::fs::create_dir_all(&dir);
                         let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
                     }

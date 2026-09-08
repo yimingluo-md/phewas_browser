@@ -17,6 +17,7 @@ const SHORT_LABEL: Record<string, string> = {
 
 export async function renderGene($app: HTMLElement, ds: string, gene: string): Promise<void> {
   const [meta, data] = await Promise.all([loadMeta(ds), api.gene(ds, gene)]);
+  if (!$app.isConnected) return;
   const { summary } = data;
   const variants: Row[] = data.variants.map((v) => ({
     ...v, hgvsp_short: hgvspShort(v["hgvsp"] as string | null), _rsid: rsids(v["existing_variation"])[0] ?? null,

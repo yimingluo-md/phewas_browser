@@ -72,7 +72,12 @@ class DatasetCache:
             ds.close()
 
     def refresh_manifest(self, dataset_id: str) -> None:
-        self.drop(dataset_id)
+        # Name/notes changes do not invalidate the immutable database. Closing it here
+        # breaks any request already using the cached Dataset.
+        with self._lock:
+            ds = self._open.get(dataset_id)
+            if ds is not None:
+                ds.manifest = self.lib.get(dataset_id).manifest()
 
 
 class ImportBody(BaseModel):
@@ -380,7 +385,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @app.get("/{path:path}")
         def spa(path: str) -> FileResponse:
-            f = static / path
+            f = (static / path).resolve()
+            if not f.is_relative_to(static.resolve()):
+                raise HTTPException(404, "file not found")
             if f.is_file():
                 return FileResponse(f)
             return FileResponse(static / "index.html")

@@ -51,6 +51,8 @@ let searchTimer: number | undefined;
 let searchSel = -1;
 
 function bindSearch(): void {
+  clearTimeout(searchTimer);
+  searchSel = -1;
   const $search = document.getElementById("search") as HTMLInputElement | null;
   const $sres = document.getElementById("search-results");
   if (!$search || !$sres) return;
@@ -68,10 +70,15 @@ function bindSearch(): void {
     clearTimeout(searchTimer);
     const term = $search.value.trim();
     const ds = active();
+    results = [];
+    searchSel = -1;
+    $sres.classList.add("hidden");
     if (!term || !ds) { $sres.classList.add("hidden"); return; }
     searchTimer = window.setTimeout(async () => {
       try {
-        results = (await api.search(ds, term)).results;
+        const response = await api.search(ds, term);
+        if (!$search.isConnected || $search.value.trim() !== term || active() !== ds) return;
+        results = response.results;
         searchSel = -1;
         $sres.innerHTML = results.length
           ? results.map((r, i) =>
@@ -94,7 +101,8 @@ function bindSearch(): void {
     else return;
     items.forEach((d, i) => d.classList.toggle("active", i === searchSel));
   });
-  document.addEventListener("click", (e) => {
-    if (!(e.target as HTMLElement).closest(".searchwrap")) $sres.classList.add("hidden");
-  });
 }
+
+document.addEventListener("click", (e) => {
+  if (!(e.target as HTMLElement).closest(".searchwrap")) document.getElementById("search-results")?.classList.add("hidden");
+});

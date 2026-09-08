@@ -1,7 +1,7 @@
 /* Import wizard: files -> detected layout & validation -> live progress -> open the dataset. */
 import { api, watchJob } from "../api";
 import { esc, fmtBytes, fmtNum } from "../format";
-import { go, href } from "../router";
+import { href } from "../router";
 import { invalidateLibrary } from "../state";
 import type { InspectAnnotation, InspectSumstats, Job } from "../types";
 import { pickFile } from "../components/filepicker";
@@ -14,12 +14,14 @@ const STEPS: [string, string][] = [
   ["finalize", "Hashing sources and writing the manifest"], ["hash", "Hashing sources"], ["done", "Done"],
 ];
 
-export async function renderImport($app: HTMLElement): Promise<void> {
+export async function renderImport($app: HTMLElement, signal?: AbortSignal): Promise<void> {
   // a job already running (e.g. after a reload) takes over the page
   const running = (await api.jobs()).find((j) => j.status === "queued" || j.status === "running");
-  if (running) { renderProgress($app, running); return; }
+  if (!$app.isConnected || signal?.aborted) return;
+  if (running) { renderProgress($app, running, signal); return; }
 
   const [profiles, dictionaries] = await Promise.all([api.profiles(), api.dictionaries()]);
+  if (!$app.isConnected || signal?.aborted) return;
   $app.innerHTML = `
     <h1>Import a dataset</h1>
     <div class="subtitle">Point at a summary-statistics file (and optionally its VEP annotation). The layout is
@@ -58,50 +60,64 @@ export async function renderImport($app: HTMLElement): Promise<void> {
       </div>
     </div>`;
 
-  const bind = (input: string, button: string, after: () => void) => {
-    el<HTMLButtonElement>(button).onclick = () => pickFile(val(input) ? val(input).replace(/\/[^/]*$/, "") : undefined,
-      (p) => { el<HTMLInputElement>(input).value = p; after(); });
+  const form = el("i-sumstats");
+  const formActive = () => form.isConnected && !signal?.aborted;
+  const bind = (input: string, button: string, after: () => void, dirty: () => void) => {
+    el<HTMLButtonElement>(button).onclick = () => pickFile(val(input) ? val(input).replace(/[\\/][^\\/]*$/, "") : undefined,
+      (p) => { if (formActive()) { el<HTMLInputElement>(input).value = p; dirty(); after(); } });
     let t: number | undefined;
-    el(input).addEventListener("input", () => { clearTimeout(t); t = window.setTimeout(after, 400); });
+    el(input).addEventListener("input", () => { dirty(); clearTimeout(t); t = window.setTimeout(after, 400); });
     el(input).addEventListener("change", after);
   };
   let sumOk = false;
   let annOk = true;
   const refreshStart = () => {
+    if (!formActive()) return;
     el<HTMLButtonElement>("i-start").disabled = !(sumOk && annOk);
     el("i-hint").textContent = !val("i-sumstats") ? "Choose a summary-statistics file to continue."
       : !sumOk ? "Fix the problems above to continue." : !annOk ? "Fix the annotation file or clear the field." : "Ready.";
   };
   const inspectSum = async () => {
+    if (!formActive()) return;
     const path = val("i-sumstats").trim();
+    const profile = val("i-profile");
+    const current = () => formActive() && path === val("i-sumstats").trim() && profile === val("i-profile");
     const $d = el("d-sumstats");
+    sumOk = false;
+    refreshStart();
     if (!path) { $d.innerHTML = ""; sumOk = false; refreshStart(); return; }
     $d.innerHTML = '<div class="loading">Inspecting…</div>';
     try {
-      const r = (await api.inspect({ sumstats: path, profile: val("i-profile") || undefined })).sumstats!;
+      const r = (await api.inspect({ sumstats: path, profile: profile || undefined })).sumstats!;
+      if (!current()) return;
       $d.innerHTML = sumstatsHtml(r);
       sumOk = r.exists && r.problems.length === 0;
-      if (!val("i-name")) el<HTMLInputElement>("i-name").value = path.split("/").pop()!.replace(/\.(tsv|txt|csv)(\.gz|\.bgz)?$/i, "");
-    } catch (e) { $d.innerHTML = `<div class="error">${esc((e as Error).message)}</div>`; sumOk = false; }
+      if (!val("i-name")) el<HTMLInputElement>("i-name").value = path.split(/[\\/]/).pop()!.replace(/\.(tsv|txt|csv)(\.gz|\.bgz)?$/i, "");
+    } catch (e) { if (!current()) return; $d.innerHTML = `<div class="error">${esc((e as Error).message)}</div>`; sumOk = false; }
     refreshStart();
   };
   const inspectAnn = async () => {
+    if (!formActive()) return;
     const path = val("i-annotation").trim();
+    const current = () => formActive() && path === val("i-annotation").trim();
     const $d = el("d-annotation");
+    annOk = !path;
+    refreshStart();
     if (!path) { $d.innerHTML = ""; annOk = true; refreshStart(); return; }
     $d.innerHTML = '<div class="loading">Inspecting…</div>';
     try {
       const r = (await api.inspect({ annotation: path })).annotation!;
+      if (!current()) return;
       $d.innerHTML = annotationHtml(r);
       annOk = r.exists && r.problems.length === 0;
-    } catch (e) { $d.innerHTML = `<div class="error">${esc((e as Error).message)}</div>`; annOk = false; }
+    } catch (e) { if (!current()) return; $d.innerHTML = `<div class="error">${esc((e as Error).message)}</div>`; annOk = false; }
     refreshStart();
   };
-  bind("i-sumstats", "b-sumstats", () => void inspectSum());
-  bind("i-annotation", "b-annotation", () => void inspectAnn());
+  bind("i-sumstats", "b-sumstats", () => void inspectSum(), () => { sumOk = false; refreshStart(); });
+  bind("i-annotation", "b-annotation", () => void inspectAnn(), () => { annOk = !val("i-annotation").trim(); refreshStart(); });
   el("i-profile").addEventListener("change", () => void inspectSum());
   el("i-dict").addEventListener("change", () => el("i-custom-dict").classList.toggle("hidden", val("i-dict") !== "__custom"));
-  el<HTMLButtonElement>("b-dictpath").onclick = () => pickFile(undefined, (p) => { el<HTMLInputElement>("i-dictpath").value = p; });
+  el<HTMLButtonElement>("b-dictpath").onclick = () => pickFile(undefined, (p) => { if (formActive()) el<HTMLInputElement>("i-dictpath").value = p; });
 
   el<HTMLButtonElement>("i-start").onclick = async () => {
     const dict = val("i-dict") === "__custom" ? val("i-dictpath").trim() : val("i-dict");
@@ -114,8 +130,9 @@ export async function renderImport($app: HTMLElement): Promise<void> {
         build: val("i-build").trim() || null, notes: val("i-notes"),
         make_current: el<HTMLInputElement>("i-current").checked,
       });
-      renderProgress($app, job);
+      if (formActive()) renderProgress($app, job, signal);
     } catch (e) {
+      if (!formActive()) return;
       alert((e as Error).message);
       el<HTMLButtonElement>("i-start").disabled = false;
     }
@@ -148,7 +165,7 @@ function annotationHtml(r: InspectAnnotation): string {
 }
 
 /* ---------------------------------------------------------------- progress */
-function renderProgress($app: HTMLElement, job: Job): void {
+function renderProgress($app: HTMLElement, job: Job, signal?: AbortSignal): void {
   const req = job.request as { sumstats?: string; annotation?: string | null; name?: string };
   $app.innerHTML = `
     <h1>Importing <span class="dim">${esc(req.name ?? "")}</span></h1>
@@ -164,10 +181,13 @@ function renderProgress($app: HTMLElement, job: Job): void {
       <div id="result"></div>
     </div>`;
   const order = STEPS.map(([k]) => k);
+  const bar = el("bar"), status = el("status"), result = el("result");
+  const cancel = el<HTMLButtonElement>("cancel");
   const update = (j: Job) => {
+    if (!bar.isConnected) return;
     const step = j.step === "hash" ? "finalize" : j.step;
     const idx = order.indexOf(step);
-    document.querySelectorAll<HTMLElement>("#steps li").forEach((li) => {
+    $app.querySelectorAll<HTMLElement>("#steps li").forEach((li) => {
       const i = order.indexOf(li.dataset.step!);
       li.classList.toggle("done", j.status === "done" || i < idx);
       li.classList.toggle("active", i === idx && j.status === "running");
@@ -175,19 +195,20 @@ function renderProgress($app: HTMLElement, job: Job): void {
         : j.total > 1 ? `${fmtNum(j.done)} / ${fmtNum(j.total)} · ${j.message}` : j.message;
     });
     const frac = j.status === "done" ? 1 : j.total > 1 ? j.done / j.total : idx >= 0 ? idx / order.length : 0;
-    el("bar").style.width = `${Math.round(frac * 100)}%`;
-    el("status").textContent = j.status === "running" ? "running…" : j.status;
+    bar.style.width = `${Math.round(frac * 100)}%`;
+    status.textContent = j.status === "running" ? "running…" : j.status;
   };
   update(job);
-  el<HTMLButtonElement>("cancel").onclick = async () => {
+  cancel.onclick = async () => {
     if (!confirm("Cancel this import? Nothing will be kept.")) return;
-    await api.cancelJob(job.id);
+    try { await api.cancelJob(job.id); } catch (e) { if (status.isConnected) status.textContent = (e as Error).message; }
   };
-  watchJob(job.id, update).then((final) => {
+  watchJob(job.id, update, 0, signal).then((final) => {
+    if (!bar.isConnected) return;
     update(final);
-    el<HTMLButtonElement>("cancel").disabled = true;
+    cancel.disabled = true;
     invalidateLibrary();
-    const $r = el("result");
+    const $r = result;
     if (final.status === "done" && final.result) {
       const s = final.result.stats;
       $r.innerHTML = `<div class="success">Imported <b>${esc(final.result.name)}</b> in ${final.result.seconds}s:
@@ -197,13 +218,13 @@ function renderProgress($app: HTMLElement, job: Job): void {
         <div class="form-actions"><a class="button primary" href="${href.home(final.result.dataset_id)}">Open the dataset</a>
           <a class="button" href="${href.library()}">Library</a></div>`;
     } else if (final.status === "cancelled") {
-      $r.innerHTML = `<div class="note">Import cancelled. <a href="${href.import()}">Start again</a></div>`;
+      $r.innerHTML = '<div class="note">Import cancelled. <button id="again">Start again</button></div>';
+      el<HTMLButtonElement>("again").onclick = () => void renderImport($app, signal);
     } else {
       $r.innerHTML = `<div class="error"><b>Import failed:</b> ${esc(final.error ?? "unknown error")}</div>
         <pre class="log">${esc(final.message)}</pre>
         <div class="form-actions"><button id="again">Back to the form</button></div>`;
-      el<HTMLButtonElement>("again").onclick = () => void renderImport($app);
+      el<HTMLButtonElement>("again").onclick = () => void renderImport($app, signal);
     }
-  }).catch((e) => { el("status").textContent = (e as Error).message; });
-  void go;
+  }).catch((e) => { if (status.isConnected && !signal?.aborted) status.textContent = (e as Error).message; });
 }

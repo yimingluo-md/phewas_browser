@@ -3,7 +3,26 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased] — Phase 1: core extraction
+## [Unreleased]
+
+### Fixed — post-migration audit
+- `phewas serve` launches the current server and supports importing into an empty library.
+- Static frontend requests cannot escape the frontend directory, including through symlinks.
+- CSV preview and import agree on the delimiter; long-format imports accept missing optional statistics.
+- Imports accept library paths containing apostrophes, honor cancellation while hashing, and close
+  DuckDB before removing failed imports on Windows. Failed logs include the error.
+- Concurrent library operations in the server are serialized; reordering does not duplicate datasets,
+  and renaming keeps in-flight database requests usable.
+- Page navigation, import inspection and plots discard stale responses. Import progress continues
+  after a dropped stream, releases subscriptions when navigating away, and permits restarting after cancellation.
+- Search ignores responses to older queries; launch tokens still work when browser storage is disabled.
+- SSE keepalives cannot hold the importer lock while waiting for a client to consume them.
+- The Windows parent watchdog preserves 64-bit handles. Desktop startup times out even for a silent
+  sidecar, and Show Data Folder uses the server's actual library location.
+- The migration comparison detects numeric values lost to NULL instead of reporting them as identical.
+- Browser regression tests run in CI; Python tests also run on Windows.
+
+### Phase 1: core extraction
 
 ### Added
 - `packages/phewas_core`: the new engine, no web dependencies.

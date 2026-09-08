@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -30,6 +30,52 @@ jobs:
         run: uv run mypy
       - name: Tests (synthetic fixture only — no real data in CI)
         run: uv run pytest -q
+
+  web:
+    name: browser smoke + regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --python 3.12
+      - working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Synthetic fixture
+        run: |
+          uv run python tests/fixtures/make_synthetic.py "$RUNNER_TEMP/synthetic"
+          uv run phewas --home "$RUNNER_TEMP/phewas-home" import "$RUNNER_TEMP/synthetic/sumstats.tsv.gz" --annotation "$RUNNER_TEMP/synthetic/annotation.tsv" --name synthetic --memory-limit 1GB --no-hash --quiet
+      - name: Browser checks
+        env:
+          PHEWAS_TOKEN: ci-synthetic-token
+          PHEWAS_URL: http://127.0.0.1:8555
+          PHEWAS_HOME: ${{ runner.temp }}/phewas-home
+          SYN_DIR: ${{ runner.temp }}/synthetic
+          SHOTS: ${{ runner.temp }}/browser-shots
+        run: |
+          uv run phewas serve --port 8555 --no-open > "$RUNNER_TEMP/server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "$PHEWAS_URL/api/health" > /dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -fsS "$PHEWAS_URL/api/health"
+          (cd apps/web && npm run e2e)
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-diagnostics
+          path: |
+            ${{ runner.temp }}/server.log
+            ${{ runner.temp }}/browser-shots
 
   desktop:
     name: desktop shell (cargo check) + frozen sidecar

@@ -13,6 +13,7 @@ import sys
 import time
 import webbrowser
 from pathlib import Path
+from urllib.parse import urlencode
 
 from .app import create_app
 from .settings import Settings
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.token:
         settings.token = a.token
     port = a.port or free_port()
-    url = f"http://127.0.0.1:{port}/?token={settings.token}"
+    url = f"http://127.0.0.1:{port}/?{urlencode({'token': settings.token})}"
     print(f"PHEWAS_PORT={port}", flush=True)
     if settings.static_dir is None:
         print("note: frontend not built (apps/web/dist missing); API only", file=sys.stderr)
@@ -65,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         time.sleep(0.02)
     # the shell (Tauri) waits for this line: printed only once the socket is listening
+    print(f"PHEWAS_HOME={settings.home.resolve()}", flush=True)
     print(f"PHEWAS_URL={url}", flush=True)
     if not a.no_open and settings.static_dir is not None:
         webbrowser.open(url)
@@ -80,12 +82,19 @@ def _parent_alive(pid: int) -> bool:
     if sys.platform.startswith("win"):
         import ctypes
 
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        kernel = ctypes.windll.kernel32
+        kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        kernel.GetExitCodeProcess.restype = ctypes.c_int
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.restype = ctypes.c_int
+        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
             return False
         code = ctypes.c_ulong()
-        ok = ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(handle)
+        ok = kernel.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel.CloseHandle(handle)
         return bool(ok) and code.value == 259  # STILL_ACTIVE
     try:
         os.kill(pid, 0)

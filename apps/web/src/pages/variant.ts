@@ -50,6 +50,7 @@ const ALWAYS_SHOW = new Set(["hgvsc", "hgvsp", "transcript", "existing_variation
 
 export async function renderVariant($app: HTMLElement, ds: string, variantId: string, geneArg: string | null): Promise<void> {
   const [meta, data] = await Promise.all([loadMeta(ds), api.variant(ds, variantId, geneArg)]);
+  if (!$app.isConnected) return;
   const name = data.variant_id;
   const gene = data.gene;
   const ann = data.annotation ?? {};
@@ -137,7 +138,10 @@ export async function renderVariant($app: HTMLElement, ds: string, variantId: st
   const cats = [...new Set(assoc.map((a) => a.category).filter((c): c is string => !!c))];
   el("a-cat").innerHTML += cats.map((c) => `<option>${esc(c)}</option>`).join("");
 
-  void drawManhattan("manhattan", assoc, primary.id, bonf);
+  const plot = el("manhattan");
+  void drawManhattan(plot, assoc, primary.id, bonf).catch((e) => {
+    if (plot.isConnected) plot.textContent = `Plot could not load: ${(e as Error).message}`;
+  });
 
   /* ---- association table ---- */
   type Flat = Record<string, unknown> & { _a: Association };

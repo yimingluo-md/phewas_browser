@@ -14,6 +14,7 @@ import { renderVariant } from "./pages/variant";
 
 const $app = document.getElementById("app")!;
 let nav = 0;
+let navigation: AbortController | undefined;
 
 function showError(e: unknown): void {
   const msg = e instanceof ApiError && e.status === 401
@@ -24,26 +25,32 @@ function showError(e: unknown): void {
 
 async function route(): Promise<void> {
   const my = ++nav;
-  const r = parse(location.hash);
+  navigation?.abort();
+  navigation = new AbortController();
+  const signal = navigation.signal;
+  const page = document.createElement("div");
+  page.innerHTML = '<div class="loading">Loading…</div>';
+  $app.replaceChildren(page);
   window.scrollTo(0, 0);
   try {
+    const r = parse(location.hash);
     await loadLibrary();
+    if (my !== nav) return;
     if (r.page === "home" && !r.dataset) {
       const ds = await defaultDataset();
+      if (my !== nav) return;
       go(ds ? href.home(ds) : href.library());
       return;
     }
     setActive(r.dataset);
     renderHeader();
-    $app.innerHTML = '<div class="loading">Loading…</div>';
-    if (my !== nav) return;
     switch (r.page) {
-      case "library": await renderLibrary($app); break;
-      case "import": await renderImport($app); break;
-      case "info": await renderInfo($app, r.dataset!); break;
-      case "gene": await renderGene($app, r.dataset!, r.gene!); break;
-      case "variant": await renderVariant($app, r.dataset!, r.variant!, r.gene ?? null); break;
-      default: await renderHome($app, r.dataset!);
+      case "library": await renderLibrary(page); break;
+      case "import": await renderImport(page, signal); break;
+      case "info": await renderInfo(page, r.dataset!); break;
+      case "gene": await renderGene(page, r.dataset!, r.gene!); break;
+      case "variant": await renderVariant(page, r.dataset!, r.variant!, r.gene ?? null); break;
+      default: await renderHome(page, r.dataset!);
     }
   } catch (e) {
     if (my === nav) showError(e);

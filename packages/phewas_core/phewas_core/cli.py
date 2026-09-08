@@ -106,22 +106,18 @@ def cmd_profiles(a: argparse.Namespace) -> int:
 
 
 def cmd_serve(a: argparse.Namespace) -> int:
-    import os
-
     lib = _lib(a)
-    ref = lib.get(a.dataset) if a.dataset else lib.current()
-    if ref is None:
-        print("no dataset to serve; import one first", file=sys.stderr)
-        return 1
-    os.environ["IEI_PHEWAS_DB"] = str(ref.db_path)
+    if a.dataset:
+        lib.set_current(a.dataset)
     try:
-        import uvicorn
+        from phewas_server.__main__ import main as serve
     except ImportError:
-        print("uvicorn is not installed in this environment", file=sys.stderr)
+        print("phewas-server is not installed in this environment", file=sys.stderr)
         return 1
-    print(f"serving {ref.id} on http://127.0.0.1:{a.port}")
-    uvicorn.run("app:app", host="127.0.0.1", port=a.port, log_level="warning")
-    return 0
+    args = ["--home", str(lib.home), "--port", str(a.port)]
+    if a.no_open:
+        args.append("--no-open")
+    return serve(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -157,9 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("dataset")
     p.set_defaults(fn=cmd_remove)
     sub.add_parser("profiles", help="list import profiles").set_defaults(fn=cmd_profiles)
-    p = sub.add_parser("serve", help="run the browser on a dataset (development)")
+    p = sub.add_parser("serve", help="open the browser and dataset library")
     p.add_argument("dataset", nargs="?")
-    p.add_argument("--port", type=int, default=8555)
+    p.add_argument("--port", type=int, default=0, help="listen port (default: a free loopback port)")
+    p.add_argument("--no-open", action="store_true", help="do not open a browser")
     p.set_defaults(fn=cmd_serve)
     return ap
 

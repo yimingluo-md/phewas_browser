@@ -22,16 +22,19 @@ uv run ruff format packages tests
 uv run mypy                      # strict typing on packages/
 uv run phewas --help             # dataset library CLI (import / list / info / serve ...)
 uv run python tests/fixtures/make_synthetic.py /tmp/syn      # inspect the fixture inputs
-uv run python scripts/build_db.py --sumstats /tmp/syn/sumstats.tsv.gz \
-    --annotation /tmp/syn/annotation.tsv --out /tmp/syn/phewas.duckdb --memory-limit 1GB
-IEI_PHEWAS_DB=/tmp/syn/phewas.duckdb uv run uvicorn app:app --port 8555   # browse the fixture
+uv run phewas --home /tmp/phewas-synthetic import /tmp/syn/sumstats.tsv.gz \
+    --annotation /tmp/syn/annotation.tsv --name synthetic --memory-limit 1GB
+(cd apps/web && npm ci && npm run build)
+uv run phewas --home /tmp/phewas-synthetic serve --port 8555
+# In another terminal, using the token printed by the server:
+# PHEWAS_TOKEN=<token> SYN_DIR=/tmp/syn npm --prefix apps/web run e2e
 ```
 
 ## Conventions
 
-- **Versions**: `duckdb`, `fastapi`, `uvicorn` are pinned identically in
-  `pyproject.toml`, `uv.lock` and `requirements.lock.txt` (the latter feeds the
-  bundled offline runtimes). Bump all three together, then rebuild runtimes.
+- **Versions**: `duckdb`, `fastapi`, `uvicorn` are pinned in the root and package
+  `pyproject.toml` files and resolved in `uv.lock`. Keep these in step; the desktop
+  sidecar is frozen from the same locked environment by `scripts/build_sidecar.sh`.
 - **Lint**: `ruff check` and `mypy` must pass in CI; `ruff format` is the style for `packages/`,
   `scripts/` and `tests/`.
 - **Tests**: every bug fix in the pipeline or API gets a test against the synthetic
@@ -41,17 +44,19 @@ IEI_PHEWAS_DB=/tmp/syn/phewas.duckdb uv run uvicorn app:app --port 8555   # brow
 - **Architecture decisions** are recorded in `docs/ARCHITECTURE_PLAN.md` (§4) and,
   from Phase 1 on, as one file per decision in `docs/adr/`.
 
-## Repository map (Phase 1)
+## Repository map
 
 | Path | Role |
 |---|---|
 | `packages/phewas_core/` | the engine: schema, field registry, profiles, importer, registry, query layer, CLI |
-| `app.py`, `static/`, `launch.sh`, `*.command`, `*.bat` | today's runnable browser (legacy API shape via `legacy_api.py`) — keeps working until the native shell (Phase 3) replaces it |
-| `scripts/build_db.py` | legacy one-off pipeline; kept only as the reference the equivalence tests compare against |
+| `packages/phewas_server/` | token-protected API, import jobs, frontend serving and frozen sidecar |
+| `apps/web/` | TypeScript frontend and browser smoke/regression tests |
+| `apps/desktop/` | Tauri desktop shell, menus and sidecar lifecycle |
+| `tests/legacy/build_db.py` | reference pipeline used by the equivalence tests |
 | `tests/` | pytest suite + synthetic fixture generator; `test_equivalence.py` pins new == legacy |
 | `benchmarks/` | reproducible measurements behind ADRs |
 | `docs/ARCHITECTURE_PLAN.md`, `docs/adr/` | where this is going and why; one file per decision |
-| `.github/workflows/ci.yml` | lint + mypy + tests on Linux and macOS |
+| `.github/workflows/ci.yml` | lint + mypy + Python tests on Linux, macOS and Windows; browser tests and sidecar build on Linux |
 
 ## Adding things
 

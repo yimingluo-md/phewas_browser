@@ -5,6 +5,7 @@ import { datasetEntry, loadMeta } from "../state";
 
 export async function renderHome($app: HTMLElement, ds: string): Promise<void> {
   const meta = await loadMeta(ds);
+  if (!$app.isConnected) return;
   const entry = datasetEntry(ds);
   const { genes, stats } = meta;
   const byLetter = new Map<string, typeof genes>();

@@ -2,10 +2,11 @@
 import { api } from "../api";
 import { esc, fmtBytes, fmtDate, fmtNum } from "../format";
 import { href } from "../router";
-import { invalidateLibrary } from "../state";
+import { invalidateLibrary, loadLibrary } from "../state";
 
 export async function renderInfo($app: HTMLElement, ds: string): Promise<void> {
   const info = await api.dataset(ds);
+  if (!$app.isConnected) return;
   const m = info.manifest;
   if (!m) { $app.innerHTML = `<div class="error">No manifest for ${esc(ds)}</div>`; return; }
   const groups = new Map<string, number>();
@@ -52,7 +53,7 @@ export async function renderInfo($app: HTMLElement, ds: string): Promise<void> {
       <pre class="log">${esc(info.log || "(no log)")}</pre>
     </div>`;
 
-  const rerender = async () => { invalidateLibrary(); await renderInfo($app, ds); };
+  const rerender = async () => { invalidateLibrary(); await loadLibrary(); await renderInfo($app, ds); };
   (document.getElementById("rename") as HTMLButtonElement).onclick = async () => {
     const name = prompt("Dataset name", m.name);
     if (name && name.trim() !== m.name) { await api.patchDataset(ds, { name: name.trim() }); await rerender(); }
