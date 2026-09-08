@@ -49,19 +49,16 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Synthetic dataset + server
+      - name: Synthetic dataset, server and browser smoke test
         run: |
           uv sync --locked --python 3.12
           uv run python tests/fixtures/make_synthetic.py /tmp/syn --variants-per-gene 40 --traits 120
           uv run phewas --home /tmp/e2e import /tmp/syn/sumstats.tsv.gz --annotation /tmp/syn/annotation.tsv \
             --name "Synthetic IEI demo" --build GRCh38 --memory-limit 1GB --no-hash --quiet
-          PHEWAS_HOME=/tmp/e2e PHEWAS_TOKEN=e2etoken nohup uv run phewas-server --port 8555 --no-open > /tmp/server.log 2>&1 &
+          (cd apps/web && npx playwright install --with-deps chromium)
+          PHEWAS_HOME=/tmp/e2e PHEWAS_TOKEN=e2etoken uv run phewas-server --port 8555 --no-open > /tmp/server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8555/api/health && break; sleep 1; done
-      - name: Browser smoke test
-        working-directory: apps/web
-        run: |
-          npx playwright install --with-deps chromium
-          SYN_DIR=/tmp/syn npm run e2e
+          cd apps/web && SYN_DIR=/tmp/syn npm run e2e || { echo "--- server log"; cat /tmp/server.log; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
