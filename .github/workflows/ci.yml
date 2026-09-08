@@ -58,7 +58,14 @@ jobs:
           (cd apps/web && npx playwright install --with-deps chromium)
           PHEWAS_HOME=/tmp/e2e PHEWAS_TOKEN=e2etoken uv run phewas-server --port 8555 --no-open > /tmp/server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8555/api/health && break; sleep 1; done
-          cd apps/web && SYN_DIR=/tmp/syn npm run e2e || { echo "--- server log"; cat /tmp/server.log; exit 1; }
+          cd apps/web
+          if ! SYN_DIR=/tmp/syn npm run e2e > /tmp/e2e.log 2>&1; then
+            cat /tmp/e2e.log; echo "--- server log"; cat /tmp/server.log
+            # surface the tail as check annotations (readable through the API when logs are not)
+            echo "::error title=e2e::$(tail -n 25 /tmp/e2e.log | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            echo "::error title=server::$(tail -n 15 /tmp/server.log | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
