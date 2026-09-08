@@ -95,10 +95,15 @@ def test_static_routes_cannot_read_outside_frontend(tmp_path):
     (static / "assets").mkdir()
     (static / "index.html").write_text("<html>frontend</html>")
     (tmp_path / "private.txt").write_text("private sentinel")
-    (static / "link.txt").symlink_to(tmp_path / "private.txt")
+    urls = ["/%2e%2e/private.txt", "/../private.txt"]
+    try:
+        (static / "link.txt").symlink_to(tmp_path / "private.txt")
+        urls.append("/link.txt")
+    except OSError:  # symlinks need a privilege on Windows; the traversal checks still run
+        pass
     app = create_app(Settings(home=tmp_path / "home", token="test", static_dir=static))
     with TestClient(app) as client:
-        for url in ("/%2e%2e/private.txt", "/link.txt"):
+        for url in urls:
             response = client.get(url)
             assert "private sentinel" not in response.text
         assert client.get("/some/spa/route").text == "<html>frontend</html>"

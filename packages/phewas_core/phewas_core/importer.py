@@ -14,6 +14,7 @@ import datetime as dt
 import hashlib
 import os
 import shutil
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -74,12 +75,43 @@ class ImportCancelledError(RuntimeError):
 # ---------------------------------------------------------------- helpers
 
 
+def physical_memory_bytes() -> int:
+    """Total RAM, or 8 GB when the platform does not tell us (Windows has no sysconf)."""
+    sysconf = getattr(os, "sysconf", None)
+    if sysconf is not None:
+        try:
+            return int(sysconf("SC_PAGE_SIZE") * sysconf("SC_PHYS_PAGES"))
+        except (ValueError, OSError):
+            pass
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = MemoryStatus()
+            status.dwLength = ctypes.sizeof(MemoryStatus)
+            kernel32 = getattr(ctypes, "windll").kernel32  # noqa: B009 — attribute exists on Windows only
+            if kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullTotalPhys)
+        except (OSError, AttributeError):
+            pass
+    return 8 * 2**30
+
+
 def default_memory_limit() -> str:
-    try:
-        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-    except (ValueError, OSError, AttributeError):
-        total = 8 * 2**30
-    return f"{max(1, int(total / 2**30 / 2))}GB"
+    return f"{max(1, int(physical_memory_bytes() / 2**30 / 2))}GB"
 
 
 def sha256_of(path: Path, progress: ProgressFn | None = None) -> str:
