@@ -10,6 +10,7 @@ import argparse
 import os
 import socket
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -30,6 +31,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--static", help="built frontend directory (apps/web/dist)")
     ap.add_argument("--no-open", action="store_true", help="do not open a browser")
     ap.add_argument("--token", help="fixed token (default: random per launch, or $PHEWAS_TOKEN)")
+    ap.add_argument(
+        "--parent-pid", type=int, help="exit when this process disappears (used by the desktop shell)"
+    )
     a = ap.parse_args(argv)
 
     settings = Settings.from_env()
@@ -41,21 +45,69 @@ def main(argv: list[str] | None = None) -> int:
         settings.token = a.token
     port = a.port or free_port()
     url = f"http://127.0.0.1:{port}/?token={settings.token}"
-    # the shell (Tauri) reads these two lines to connect
     print(f"PHEWAS_PORT={port}", flush=True)
-    print(f"PHEWAS_URL={url}", flush=True)
     if settings.static_dir is None:
         print("note: frontend not built (apps/web/dist missing); API only", file=sys.stderr)
+    if a.parent_pid:
+        watch_parent(a.parent_pid)
+
+    import threading
 
     import uvicorn
 
     app = create_app(settings)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)
+    thread.start()
+    while not server.started:
+        if not thread.is_alive():
+            print("server failed to start", file=sys.stderr)
+            return 1
+        time.sleep(0.02)
+    # the shell (Tauri) waits for this line: printed only once the socket is listening
+    print(f"PHEWAS_URL={url}", flush=True)
     if not a.no_open and settings.static_dir is not None:
-        import threading
-
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+        webbrowser.open(url)
+    try:
+        thread.join()
+    except KeyboardInterrupt:
+        server.should_exit = True
+        thread.join(timeout=5)
     return 0
+
+
+def _parent_alive(pid: int) -> bool:
+    if sys.platform.startswith("win"):
+        import ctypes
+
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return os.getppid() != 1 if pid == os.getppid() else True
+
+
+def watch_parent(pid: int) -> None:
+    """Exit when the process that launched us is gone (the shell crashed or was killed),
+    so no orphaned server keeps a RUO dataset open."""
+    import threading
+
+    def loop() -> None:
+        while True:
+            time.sleep(2)
+            if not _parent_alive(pid):
+                os._exit(0)
+
+    threading.Thread(target=loop, name="parent-watchdog", daemon=True).start()
 
 
 if __name__ == "__main__":

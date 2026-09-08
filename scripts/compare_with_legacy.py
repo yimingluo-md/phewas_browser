@@ -23,13 +23,13 @@ from phewas_core.registry import Library
 TOL = 1e-9
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("legacy_db")
     ap.add_argument("dataset", nargs="?", help="dataset id/prefix/dir (default: current)")
     ap.add_argument("--sample", type=int, default=300, help="variants to compare in assoc")
     ap.add_argument("--home")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     lib = Library(Path(a.home) if a.home else None)
     ref = lib.get(a.dataset) if a.dataset else lib.current()

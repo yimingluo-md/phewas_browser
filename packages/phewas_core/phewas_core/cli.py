@@ -106,22 +106,22 @@ def cmd_profiles(a: argparse.Namespace) -> int:
 
 
 def cmd_serve(a: argparse.Namespace) -> int:
-    """Run the browser (phewas_server) on the library; requires the server package."""
-    try:
-        from phewas_server.__main__ import main as server_main
-    except ImportError:
-        print("phewas-server is not installed in this environment (uv sync installs it)", file=sys.stderr)
+    import os
+
+    lib = _lib(a)
+    ref = lib.get(a.dataset) if a.dataset else lib.current()
+    if ref is None:
+        print("no dataset to serve; import one first", file=sys.stderr)
         return 1
-    if a.dataset:
-        _lib(a).set_current(a.dataset)
-    argv: list[str] = []
-    if a.home:
-        argv += ["--home", a.home]
-    if a.port:
-        argv += ["--port", str(a.port)]
-    if a.no_open:
-        argv.append("--no-open")
-    return server_main(argv)
+    os.environ["IEI_PHEWAS_DB"] = str(ref.db_path)
+    try:
+        import uvicorn
+    except ImportError:
+        print("uvicorn is not installed in this environment", file=sys.stderr)
+        return 1
+    print(f"serving {ref.id} on http://127.0.0.1:{a.port}")
+    uvicorn.run("app:app", host="127.0.0.1", port=a.port, log_level="warning")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -157,10 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("dataset")
     p.set_defaults(fn=cmd_remove)
     sub.add_parser("profiles", help="list import profiles").set_defaults(fn=cmd_profiles)
-    p = sub.add_parser("serve", help="run the browser (opens it in your web browser)")
-    p.add_argument("dataset", nargs="?", help="make this dataset current first")
-    p.add_argument("--port", type=int, help="fixed port (default: a free one)")
-    p.add_argument("--no-open", action="store_true")
+    p = sub.add_parser("serve", help="run the browser on a dataset (development)")
+    p.add_argument("dataset", nargs="?")
+    p.add_argument("--port", type=int, default=8555)
     p.set_defaults(fn=cmd_serve)
     return ap
 

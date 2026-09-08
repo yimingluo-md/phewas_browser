@@ -1,0 +1,4 @@
+node_modules/
+src-tauri/target/
+src-tauri/sidecar/phewas-server/
+src-tauri/gen/

@@ -1,128 +1,65 @@
-# IEI PheWAS Browser
+# PheWAS Browser
 
-Local web UI for browsing variant-level PheWAS summary statistics from the
-IEI haploinsufficiency AoU + UKBB meta-analysis.
+A desktop app for browsing variant-level PheWAS summary statistics — offline, on your own
+machine. Import a summary-statistics file (plus optional VEP annotation), keep several
+datasets side by side, and explore genes, variants and phenotypes with Manhattan plots,
+filterable tables and CSV export.
 
-Developed by Yiming Luo. **Research Use Only — contains sensitive data; do not disseminate.**
+Developed by Yiming Luo. The application contains **no data**; datasets you import are
+typically **Research Use Only — do not disseminate**.
 
-## Quick start (no command line needed)
+## Install
 
-**Mac**: double-click **`IEI PheWAS Browser.app`**. It starts the server (if it
-isn't running already) and opens <http://localhost:8555> in your browser. The
-distributed Mac app contains native runtimes for Apple Silicon and Intel, so it
-does not need Python, developer tools, administrator access, or internet. To
-shut the server down, double-click **`Stop PheWAS Browser.command`**. In a source
-checkout, **`Launch IEI PheWAS Browser.command`** is also available as a fallback.
+Download the build for your machine from the repository's *Releases* (or from the artifacts
+of an *Actions → Release build* run):
 
-**Windows**: double-click **`Launch PheWAS Browser (Windows).bat`**. Nothing
-needs to be installed — a Python runtime is bundled in `windows/`. A minimized
-"server" window stays open while you browse; close it (or double-click
-**`Stop PheWAS Browser (Windows).bat`**) to stop.
-
-The Mac app can be dragged to the Dock or a Desktop alias can be made
-(right-click → Make Alias); it always works as long as this folder stays in place.
-
-## Sending to collaborators
-
-Run `./scripts/make_bundle.sh`. It writes two self-contained downloads to the
-Desktop: `IEI_PheWAS_Browser_Mac.zip` and
-`IEI_PheWAS_Browser_Windows.zip`. You can build only one with
-`./scripts/make_bundle.sh mac` or `./scripts/make_bundle.sh windows`. Share the
-appropriate file via a **secure institutional channel** (OneDrive/Globus, not
-email): the data is Research Use Only and must not be disseminated.
-
-Collaborator instructions:
-
-- **Extract the zip completely first** (don't launch from inside the zip).
-- **Mac**: double-click `IEI PheWAS Browser.app`. If macOS blocks it
-  ("Apple could not verify…"), go to System Settings → Privacy & Security →
-  scroll down → **Open Anyway** (older macOS: right-click the app → Open).
-  No other installation or internet connection is needed. The app is
-  self-contained so Gatekeeper's randomized launch location cannot separate it
-  from `launch.sh` or the database.
-- **Windows** (10/11): double-click `Launch PheWAS Browser (Windows).bat`.
-  If SmartScreen warns, click **More info → Run anyway**. Fully offline,
-  nothing is installed.
-
-## Quick start (command line)
-
-```bash
-cd /Users/yluo/Work/PheWAS/IEI_haploinsufficiency/phewas_browser
-./launch.sh
-```
-
-Then open <http://localhost:8555>.
-
-## What's inside
-
-| Path | Purpose |
+| Platform | File |
 |---|---|
-| `data/phewas.duckdb` | All data, one DuckDB file (~3.1 GB) |
-| `data/phecode_definitions1.2.csv` | Standard 1,817-phecode v1.2 definitions (from the PheWAS R package `pheinfo`) |
-| `scripts/build_db.py` | One-time build script (rerun if sumstats/annotation change; ~90 s) |
-| `app.py` | FastAPI backend (search / gene / variant endpoints) |
-| `static/` | Frontend (vanilla JS + Plotly, no build step) |
-| `macos/` | Bundled Python 3.12 runtimes and packages for Apple Silicon and Intel |
-| `windows/` | Bundled Python 3.12 runtime + packages for Windows (no install needed) |
-| `scripts/prepare_macos_runtime.sh` | Rebuilds the two pinned, offline Mac runtimes |
-| `scripts/make_bundle.sh` | Creates separate self-contained Mac and Windows ZIPs |
+| macOS, Apple Silicon | `PheWAS Browser_…_aarch64.dmg` |
+| macOS, Intel | `PheWAS Browser_…_x64.dmg` |
+| Windows 10/11 | `PheWAS Browser_…_x64-setup.exe` |
 
-## Data notes
+Open the DMG and drag the app to *Applications*. Until the builds are signed with a
+Developer ID (Phase 4), macOS will say the developer cannot be verified the first time:
+right-click the app → **Open** → **Open**. Windows: *More info → Run anyway*.
 
-- **Sources**: `01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz` (70.7M rows) and
-  `data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv`.
-- **Kept**: 68.76M associations = 43,257 variants × 50 genes × 1,715 phecodes.
-  Trait codes with no phecode v1.2 description (50 codes) were dropped.
-- **Stats kept per association**: aOR + P for Meta (main), AoU and UKBB (optional
-  columns in the UI), plus total cases/controls and case/control **carrier** counts
-  per cohort (no het/hom split exists in the sumstats).
-- `Source` = which cohorts contributed. For single-cohort rows the Meta columns
-  pass through that cohort's estimate.
-- **Annotation**: one row per (variant, gene) — MANE Select transcript preferred,
-  else VEP canonical. dbNSFP per-transcript values ("T&.&.&T") are collapsed:
-  scores → max, predictions → distinct set.
-- `gnomad_popmax_af/pop` are computed as the max across gnomAD exome+genome
-  AFR/AMR/EAS/NFE/SAS AFs (bottlenecked pops excluded).
-- **SpliceAI**: SNVs use precomputed scores (d=50); indels come from the Broad
-  lookup API (d=500). Note: 160/161 Broad-lookup indels are labeled
-  `BroadAPI_masked_d50` in the source annotation file — the UI displays d=500
-  per the pipeline's actual query distance; verify the fill script label if in doubt.
-- Gene-page search accepts protein notation in both forms (`Arg158Gln` or `R158Q`);
-  1-letter HGVSp is also shown in tables and CSV exports (`hgvsp_short`).
+## Use
 
-## The new browser (Phase 2)
+1. **Import…** (or `File → Import Dataset…`): choose the summary-statistics file; the layout
+   is detected from its header (the REGENIE meta-analysis layout with per-cohort columns is
+   built in, as is a long one-row-per-cohort layout). Optionally add the VEP annotation TSV,
+   a name and the genome build, then *Start import*. Progress is live; the original files are
+   never modified.
+2. Browse: the home page lists genes; a gene page lists its variants with annotation columns
+   and filters; a variant page shows annotation cards, a PheWAS Manhattan plot and the
+   association table with one column group per cohort.
+3. **Library**: switch between datasets, rename or remove them. **Dataset details** shows
+   the manifest, source files with checksums, import warnings and the log.
+
+Datasets live in `~/Library/Application Support/PheWAS Browser` (macOS) or
+`%LOCALAPPDATA%\PheWAS Browser` (Windows) — `File → Show Data Folder`.
+
+## Command line (the same engine)
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"   # uv, installed once with: curl -LsSf https://astral.sh/uv/install.sh | sh
-cd ~/phewas_browser && uv sync
-uv run phewas serve                     # starts the server on a random port and opens the UI
+uv sync                                   # once; needs uv (https://docs.astral.sh/uv/)
+uv run phewas import sumstats.tsv.gz --annotation vep.tsv --name "My study" --build GRCh38
+uv run phewas list | info <id> | remove <id> | profiles
+uv run phewas serve                       # the same UI in your web browser
+uv run python scripts/compare_with_legacy.py legacy.duckdb   # value-for-value check against a Phase-0 database
 ```
 
-The frontend must be built once (`cd apps/web && npm ci && npm run build`; needs Node 22) —
-`phewas serve` tells you if it is missing. Datasets are imported from the UI (**Import…**)
-or from the command line, see below; several can be kept side by side and switched in the header.
+The command-line UI needs the frontend built once (`cd apps/web && npm ci && npm run build`).
 
-## Importing a dataset from the command line
+## How it is built
 
-The `phewas` command builds a self-contained dataset from a sumstats file and stores it in
-the dataset library (`~/Library/Application Support/PheWAS Browser`, override with
-`$PHEWAS_HOME`). The layout is detected from the header; the current meta-analysis file
-matches the built-in `regenie-meta-wide` profile.
-
-```bash
-uv run phewas import 01_variant_level_meta/meta_IEI_AoU_UKBB.tsv.gz \
-    --annotation data/IEI_pilot_filtered_AoU_UKBB_V9.vep_50bpPTC.spliceAIfilled.tsv \
-    --name "IEI AoU+UKBB meta v9" --build GRCh38
-uv run phewas list                 # datasets in the library (* = current)
-uv run phewas serve                # browse the current dataset on http://127.0.0.1:8555
-uv run phewas import --help        # profiles, dictionaries, memory limit, ...
+```
+apps/desktop/    Tauri 2 shell (Rust): native window, menus, dialogs; starts the sidecar
+packages/phewas_server/   FastAPI API v1 (token on a random loopback port), import jobs; frozen with PyInstaller as the sidecar
+packages/phewas_core/     schema, field registry, import profiles, importer, dataset library, query layer, `phewas` CLI
+apps/web/        the UI (TypeScript, Vite), served by the server; rendered from each dataset's manifest
 ```
 
-See `docs/ARCHITECTURE_PLAN.md` and `docs/adr/` for the design.
-
-## Rebuild after data updates (legacy pipeline)
-
-```bash
-cd /Users/yluo/Work/PheWAS/IEI_haploinsufficiency/phewas_browser
-./macos/python-arm64/bin/python3 scripts/build_db.py  # Apple Silicon Mac
-```
+`docs/ARCHITECTURE_PLAN.md` explains the design and the roadmap; `docs/adr/` records the
+decisions; `CONTRIBUTING.md` has the developer setup. Releases are built by
+`.github/workflows/release.yml` for macOS (arm64 and Intel) and Windows.

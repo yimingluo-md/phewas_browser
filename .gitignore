@@ -9,23 +9,15 @@ __pycache__/
 venv/
 .venv/
 
-# Runtime state
-data/server.log
-data/duckdb_tmp/
-
-# Data: the DuckDB database is built locally by scripts/build_db.py (~3 GB, RUO)
-data/*.duckdb
-data/*.duckdb.wal
-
-# Bundled offline Python runtimes: rebuilt by scripts/prepare_macos_runtime.sh
-# (Mac) / downloaded separately (Windows); too large for git.
-macos/python-arm64/
-macos/python-x86_64/
-windows/python/
-
-# Built distributables and the compiled AppleScript applet wrapper
+# Legacy (pre-Phase-3) local files that may still sit in a checkout: the RUO database,
+# bundled runtimes and the old applet. Never commit data.
+data/
+macos/
+windows/
 dist/
 *.app/
+*.duckdb
+*.duckdb.wal
 
 # Toolchains / envs
 .venv/
@@ -35,3 +27,4 @@ node_modules/
 .pytest_cache/
 *.egg-info/
 tests/fixtures/_generated/
+.build/

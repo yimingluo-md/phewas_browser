@@ -1,6 +1,6 @@
 # PheWAS Browser — Mac App Architecture & Migration Plan
 
-*Status: v1.3 — Phase 2 implemented · 2026-09-08 · author: Yiming Luo (drafted with Claude)*
+*Status: v1.2 — Phase 1 implemented · 2026-09-08 · author: Yiming Luo (drafted with Claude)*
 
 ## 0. Where we are
 
@@ -260,8 +260,8 @@ Each phase ends with something usable; the existing launchers keep working until
 |---|---|---|---|
 | **0 — Foundations** | Private repo, CI running lint/tests on a synthetic fixture | git + `.gitignore`; `pyproject.toml` + `uv.lock`; `ruff`; pytest suite (pipeline + API) on a synthetic dataset generator; CI. Today's launchers stay at the repo root (the `.app` resolves `launch.sh` relative to itself) until Phase 3. | 1–2 days ✅ |
 | **1 — Core extraction** | `phewas import …` CLI builds a dataset directory from the *existing* files via the built-in profile; `app.py` serves whichever dataset is chosen. UI unchanged. | `phewas_core` package; long-format schema; dataset registry/manifest; importer job with progress; annotation field registry; query layer + legacy adapter; equivalence tests new == legacy. Benchmark done (ADR-0001). | 1.5–2 wk ✅ — real IEI dataset imported in 142 s and verified identical to the legacy database (`scripts/compare_with_legacy.py`) |
-| **2 — Multi-dataset web UI** | Library page, dataset switcher, import wizard (browse/paste paths → detected layout → progress → open), cohort-dynamic columns, field-driven variant page, token auth on a random port. Launched with `phewas serve`; the legacy launcher keeps working until Phase 3. | Vite + TS rewrite of `app.js` (`apps/web`); `phewas_server` API v1; SSE job progress + cancel; Playwright smoke test in CI | 2 wk ✅ |
-| **3 — Native shell** | Unsigned `PheWAS Browser.app` for arm64 + Intel and a Windows build, sidecar auto-start, native file dialogs and menus, Application Support storage, clean quit | Tauri project; PyInstaller sidecar; port/token handoff; single-instance; error surfaces (sidecar crash → dialog + log) | 1.5 wk |
+| **2 — Multi-dataset web UI** | Library page, dataset switcher, import wizard (paths typed/pasted), progress, cohort-dynamic columns, field-driven variant page, token auth. Still launched via `launch.sh`. | Vite + TS migration of `app.js`; new API v1; SSE progress; validation report UI | 2 wk |
+| **3 — Native shell** | Unsigned `PheWAS Browser.app` for arm64 + Intel and a Windows build, sidecar auto-start, native file dialogs and menus, Application Support storage, clean quit | Tauri project (`apps/desktop`); PyInstaller sidecar (`scripts/build_sidecar.sh`); ready-line handoff + parent watchdog; single-instance; loading page shows sidecar errors; release workflow builds all three targets; legacy launcher path removed | 1.5 wk ✅ |
 | **4 — Distribution** | Signed + notarized DMG, MSI, GitHub Actions release pipeline, auto-update, user guide | Developer ID enrolment, CI secrets, updater keys, public releases repo, `.phewasds` export/import | 1 wk |
 | **5 — Hardening & new features** | Encryption at rest; gene-level/burden results table; cross-dataset compare (same variant in v8 vs v9); region/locus view; saved filters; report export | Each feature = new `phewas_core` module + field/profile entries + one page | ongoing |
 

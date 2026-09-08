@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,7 +19,10 @@ def _default_static() -> Path | None:
     env = os.environ.get(ENV_STATIC)
     if env:
         return Path(env)
-    # source checkout: <repo>/apps/web/dist ; frozen sidecar: next to the executable
+    # frozen sidecar (PyInstaller): <exe dir>/web ; source checkout: <repo>/apps/web/dist
+    if getattr(sys, "frozen", False):
+        frozen = Path(sys.executable).resolve().parent / "web"
+        return frozen if (frozen / "index.html").exists() else None
     here = Path(__file__).resolve()
     for base in (here.parents[3] if len(here.parents) > 3 else None, Path.cwd()):
         if base and (base / "apps" / "web" / "dist" / "index.html").exists():

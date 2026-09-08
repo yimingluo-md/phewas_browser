@@ -2,7 +2,26 @@
 import { api } from "../api";
 import { esc, fmtBytes } from "../format";
 
+interface TauriDialog {
+  open(opts: { multiple?: boolean; directory?: boolean; defaultPath?: string; title?: string;
+    filters?: { name: string; extensions: string[] }[] }): Promise<string | string[] | null>;
+}
+const tauriDialog = (): TauriDialog | null =>
+  ((window as unknown as { __TAURI__?: { dialog?: TauriDialog } }).__TAURI__?.dialog) ?? null;
+
+/** True when running inside the desktop app (native dialogs, menus). */
+export const isDesktop = (): boolean => tauriDialog() !== null;
+
 export function pickFile(start: string | undefined, onPick: (path: string) => void): void {
+  const native = tauriDialog();
+  if (native) {
+    void native.open({
+      multiple: false, directory: false, defaultPath: start, title: "Choose a data file",
+      filters: [{ name: "Data files", extensions: ["tsv", "txt", "csv", "gz", "bgz", "zst", "parquet"] },
+                { name: "All files", extensions: ["*"] }],
+    }).then((p) => { if (typeof p === "string" && p) onPick(p); });
+    return;
+  }
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `<div class="modal">

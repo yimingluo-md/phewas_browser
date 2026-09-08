@@ -31,8 +31,8 @@ jobs:
       - name: Tests (synthetic fixture only — no real data in CI)
         run: uv run pytest -q
 
-  web:
-    name: frontend build + browser smoke test
+  desktop:
+    name: desktop shell (cargo check) + frozen sidecar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,30 +44,18 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - name: Build frontend
-        working-directory: apps/web
-        run: |
-          npm ci
-          npm run build
-      - name: Synthetic dataset, server and browser smoke test
-        run: |
-          uv sync --locked --python 3.12
-          uv run python tests/fixtures/make_synthetic.py /tmp/syn --variants-per-gene 40 --traits 120
-          uv run phewas --home /tmp/e2e import /tmp/syn/sumstats.tsv.gz --annotation /tmp/syn/annotation.tsv \
-            --name "Synthetic IEI demo" --build GRCh38 --memory-limit 1GB --no-hash --quiet
-          (cd apps/web && npx playwright install --with-deps chromium)
-          PHEWAS_HOME=/tmp/e2e PHEWAS_TOKEN=e2etoken uv run phewas-server --port 8555 --no-open > /tmp/server.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8555/api/health && break; sleep 1; done
-          cd apps/web
-          if ! SYN_DIR=/tmp/syn npm run e2e > /tmp/e2e.log 2>&1; then
-            cat /tmp/e2e.log; echo "--- server log"; cat /tmp/server.log
-            # surface the tail as check annotations (readable through the API when logs are not)
-            echo "::error title=e2e::$(tail -n 25 /tmp/e2e.log | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')"
-            echo "::error title=server::$(tail -n 15 /tmp/server.log | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')"
-            exit 1
-          fi
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: e2e-screenshots
-          path: apps/web/e2e/shots
+          workspaces: apps/desktop/src-tauri
+      - name: Linux WebKit deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev
+      - name: Frontend + frozen sidecar (starts and serves the UI)
+        run: |
+          (cd apps/web && npm ci && npm run build)
+          scripts/build_sidecar.sh
+      - name: cargo check
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked

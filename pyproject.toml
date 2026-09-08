@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+build = [
+    "pyinstaller>=6.11",
+]
 dev = [
     "pytest>=8.3",
     "httpx2>=2.0",        # FastAPI TestClient transport (starlette >= 1.6)
@@ -41,7 +44,7 @@ filterwarnings = ["error::DeprecationWarning:phewas.*"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["macos", "windows", "dist", "static", "legacy", "benchmarks"]
+extend-exclude = ["macos", "windows", "dist", "benchmarks", "apps/desktop/src-tauri/sidecar", ".build", "tests/legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "N", "RUF"]

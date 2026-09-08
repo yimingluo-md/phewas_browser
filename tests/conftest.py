@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
@@ -10,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for p in (ROOT, os.path.join(ROOT, "scripts")):
+for p in (ROOT, os.path.join(ROOT, "tests", "legacy")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -54,24 +53,3 @@ def library(synthetic, tmp_path_factory):
     synthetic["core_db"] = str(res.ref.db_path)
     synthetic["import_result"] = res
     return lib
-
-
-def _make_client(db_path: str):
-    from fastapi.testclient import TestClient
-
-    os.environ.pop("PHEWAS_DATASET", None)
-    os.environ["IEI_PHEWAS_DB"] = db_path
-    sys.modules.pop("app", None)  # app connects at import time
-    app_module = importlib.import_module("app")
-    return TestClient(app_module.app), app_module
-
-
-@pytest.fixture(scope="session", params=["legacy", "phewas_core"])
-def client(request, synthetic, library):
-    """The same HTTP contract must hold on the legacy build_db.py database and on a
-    phewas_core dataset served through the legacy_api adapter."""
-    db = synthetic["db"] if request.param == "legacy" else synthetic["core_db"]
-    c, app_module = _make_client(db)
-    assert request.param == app_module.BACKEND
-    with c:
-        yield c
