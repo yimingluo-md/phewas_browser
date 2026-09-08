@@ -64,10 +64,11 @@ jobs:
         run: |
           mkdir -p out
           b=apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
-          ls -R "$b" | head -50
-          cp "$b"/dmg/*.dmg out/ 2>/dev/null || true
-          cp "$b"/nsis/*.exe out/ 2>/dev/null || true
-          if [ -d "$b/macos" ]; then (cd "$b/macos" && ditto -c -k --keepParent "PheWAS Browser.app" "$OLDPWD/out/PheWAS-Browser-${{ matrix.name }}.app.zip"); fi
+          find "$b" -maxdepth 2
+          for f in "$b"/dmg/*.dmg "$b"/nsis/*.exe; do [ -e "$f" ] && cp "$f" out/; done
+          if [ -d "$b/macos" ]; then
+            ditto -c -k --keepParent "$b/macos/PheWAS Browser.app" "out/PheWAS-Browser-${{ matrix.name }}.app.zip"
+          fi
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
