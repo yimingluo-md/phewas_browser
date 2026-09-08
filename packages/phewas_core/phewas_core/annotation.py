@@ -61,6 +61,10 @@ def import_vep(con: duckdb.DuckDBPyConnection, path: Path, strip_chr_prefix: boo
             SELECT * {exclude}, {name_expr} AS variant_id,
                    row_number() OVER (PARTITION BY "{VEP_ID_COL}", "{VEP_GENE_COL}" ORDER BY {", ".join(order)}) AS rn
             FROM raw_ann
+            -- rows without a gene symbol (intergenic / regulatory features) or without a variant id
+            -- cannot join any association and would violate the (variant_id, gene) key
+            WHERE NULLIF(NULLIF("{VEP_GENE_COL}", '-'), '') IS NOT NULL
+              AND NULLIF(NULLIF("{VEP_ID_COL}", '-'), '') IS NOT NULL
         ),
         picked AS (
             SELECT *,

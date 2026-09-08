@@ -461,6 +461,39 @@ def write_annotation(path, rng, variants):
             # write the non-MANE row first so ordering can't mask a wrong pick
             w.writerow(alt)
             w.writerow(mane)
+            # the real VEP output also carries symbol-less rows (regulatory / intergenic features)
+            if i % 7 == 0:
+                w.writerow(
+                    dict(
+                        base,
+                        Feature=f"ENSR0000{i:05d}",
+                        Feature_type="RegulatoryFeature",
+                        SYMBOL="-",
+                        Gene="-",
+                        MANE_SELECT="-",
+                        CANONICAL="-",
+                        Consequence="regulatory_region_variant",
+                        IMPACT="MODIFIER",
+                        HGVSc="-",
+                        HGVSp="-",
+                    )
+                )
+            if i % 11 == 0:
+                w.writerow(
+                    dict(
+                        base,
+                        Feature=f"ENSM0000{i:05d}",
+                        Feature_type="MotifFeature",
+                        SYMBOL="",
+                        Gene="",
+                        MANE_SELECT="-",
+                        CANONICAL="-",
+                        Consequence="TF_binding_site_variant",
+                        IMPACT="MODIFIER",
+                        HGVSc="-",
+                        HGVSp="-",
+                    )
+                )
 
 
 def make_synthetic(out_dir, seed=0, n_variants_per_gene=20, n_traits=40, n_bad_traits=3):

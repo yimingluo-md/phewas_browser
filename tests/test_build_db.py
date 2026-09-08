@@ -31,7 +31,8 @@ def test_traits_without_phecode_definition_are_dropped(synthetic, con):
 
 
 def test_annotation_one_row_per_variant_gene_and_mane_preferred(synthetic, con):
-    n = con.sql("SELECT count(*) FROM annotation").fetchone()[0]
+    # the legacy pipeline also keeps VEP rows without a gene symbol (never joined); ignore them here
+    n = con.sql("SELECT count(*) FROM annotation WHERE gene IS NOT NULL AND gene <> '-'").fetchone()[0]
     assert n == len(synthetic["variants"])
     assert con.sql("SELECT count(*) FROM annotation WHERE mane_select IS NULL").fetchone()[0] == 0
     assert (

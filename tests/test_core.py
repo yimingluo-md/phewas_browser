@@ -245,6 +245,8 @@ def test_import_failure_leaves_no_partial_dataset(tmp_path):
         run_import(lib, ImportRequest(bad, "bad", memory_limit="500MB"))
     assert lib.list() == []
     assert not lib.registry_path.exists() or json.loads(lib.registry_path.read_text())["datasets"] == []
+    assert not list(lib.datasets_dir.glob("*.partial"))
+    assert list((lib.home / "failed-imports").glob("*.log"))
 
 
 # ---------------------------------------------------------------- CLI
@@ -282,3 +284,19 @@ def test_cli_import_list_info(tmp_path, synthetic, capsys):
     assert main(["--home", home, "list"]) == 0
     assert "no datasets" in capsys.readouterr().out
     assert main(["--home", home, "info", "nothing"]) == 2
+
+
+def test_symbolless_vep_rows_are_ignored(synthetic):
+    """The real VEP output carries regulatory/motif rows with SYMBOL '-' or empty."""
+    with open(synthetic["annotation"]) as f:
+        header = f.readline().rstrip("\n").split("\t")
+        sym = header.index("SYMBOL")
+        n_raw = sum(1 for line in f if line.split("\t")[sym] in ("-", ""))
+    assert n_raw > 0, "fixture should contain symbol-less rows"
+    con = duckdb.connect(synthetic["core_db"], read_only=True)
+    assert (
+        con.execute("SELECT count(*) FROM annotation WHERE gene IS NULL OR gene IN ('-', '')").fetchone()[0]
+        == 0
+    )
+    assert con.execute("SELECT count(*) FROM annotation").fetchone()[0] == len(synthetic["variants"])
+    con.close()

@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import os
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -228,6 +229,16 @@ class Importer:
                 p.unlink()
             tmp.rmdir()
             self.log(f"done in {time.time() - self.t0:.1f}s")
+        except BaseException:
+            if self.log_file is not None:
+                self.log_file.close()
+                self.log_file = None
+            failed = self.lib.home / "failed-imports"
+            failed.mkdir(parents=True, exist_ok=True)
+            # keep only the log for diagnosis; the half-built database is discarded
+            shutil.copy(partial / "import.log", failed / f"{dataset_id}.log")
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
         finally:
             if self.log_file is not None:
                 self.log_file.close()
