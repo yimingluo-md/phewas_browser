@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .importer import ImportRequest, run_import
+from .importer import ImportRequest, ProgressFn, run_import
 from .profiles import all_profiles
 from .registry import Library
 
@@ -99,6 +99,49 @@ def cmd_remove(a: argparse.Namespace) -> int:
     return 0
 
 
+def _bar(quiet: bool) -> ProgressFn:
+    last: dict[str, str | None] = {"step": None}
+
+    def progress(step: str, done: int, total: int, msg: str) -> None:
+        if quiet:
+            return
+        if step != last["step"]:
+            sys.stderr.write(f"\n{step:>8}: ")
+            last["step"] = step
+        sys.stderr.write(
+            f"\r{step:>8}: {done / 2**20:,.0f}/{total / 2**20:,.0f} MB {msg}   " if total > 1 else msg
+        )
+        sys.stderr.flush()
+
+    return progress
+
+
+def cmd_export(a: argparse.Namespace) -> int:
+    from .bundle import export_bundle
+
+    lib = _lib(a)
+    ref = lib.get(a.dataset) if a.dataset else lib.current()
+    if ref is None:
+        print("no dataset to export", file=sys.stderr)
+        return 1
+    out = export_bundle(ref, Path(a.out), _bar(a.quiet))
+    if not a.quiet:
+        sys.stderr.write("\n")
+    print(f"exported {ref.id} -> {out} ({out.stat().st_size / 2**20:,.0f} MB)")
+    return 0
+
+
+def cmd_import_bundle(a: argparse.Namespace) -> int:
+    from .bundle import import_bundle
+
+    ref = import_bundle(_lib(a), Path(a.bundle), _bar(a.quiet), make_current=not a.no_current, name=a.name)
+    if not a.quiet:
+        sys.stderr.write("\n")
+    m = ref.manifest()
+    print(f'imported {ref.id} "{m.name}" -> {ref.dir}')
+    return 0
+
+
 def cmd_profiles(a: argparse.Namespace) -> int:
     for p in all_profiles(_lib(a).home):
         print(f"{p.name:22} {p.kind:5} {p.label}   [{p.source_path}]")
@@ -153,6 +196,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("dataset")
     p.set_defaults(fn=cmd_remove)
     sub.add_parser("profiles", help="list import profiles").set_defaults(fn=cmd_profiles)
+    p = sub.add_parser("export", help="write a dataset as a .phewasds bundle for another machine")
+    p.add_argument("out", help="output file or directory")
+    p.add_argument("dataset", nargs="?", help="dataset id/prefix (default: current)")
+    p.add_argument("--quiet", action="store_true")
+    p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("import-bundle", help="add a .phewasds bundle to the library")
+    p.add_argument("bundle")
+    p.add_argument("--name", help="rename on import")
+    p.add_argument("--no-current", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    p.set_defaults(fn=cmd_import_bundle)
     p = sub.add_parser("serve", help="open the browser and dataset library")
     p.add_argument("dataset", nargs="?")
     p.add_argument("--port", type=int, default=0, help="listen port (default: a free loopback port)")

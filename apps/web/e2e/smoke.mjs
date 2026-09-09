@@ -117,19 +117,43 @@ await page.waitForSelector(".gene-chip");
 console.log("opened imported dataset:", await text("h1"));
 console.log("dataset switcher options:", await page.locator("#ds-switch option").count());
 
-// 8. library actions: rename via prompt
+// 8. library actions: rename via prompt, export a bundle (prompt fallback outside the desktop app)
 await page.goto(`${BASE}/#/library`);
 await page.waitForSelector(".ds-card");
 page.once("dialog", (d) => d.accept("Renamed via UI"));
 await page.click(".ds-card:not(.current) button[data-act=rename]");
 await page.waitForFunction(() => document.body.innerText.includes("Renamed via UI"));
 console.log("renamed ok");
+const bundlePath = `${SYN}/smoke-export.phewasds`;
+page.once("dialog", (d) => d.accept(bundlePath));
+await page.click(".ds-card:not(.current) button[data-act=export]");
+await page.waitForFunction(() => /Exported to|failed|cancelled/.test(document.body.innerText), null, { timeout: 60000 });
+console.log("export:", (await page.locator(".ds-card:not(.current) .ds-status").textContent())?.slice(0, 80));
 page.once("dialog", (d) => d.accept());
 await page.click(".ds-card:not(.current) button[data-act=remove]");
 await page.waitForFunction(() => document.querySelectorAll(".ds-card").length === 1);
 console.log("removed ok; cards:", await page.locator(".ds-card").count());
 
-// 9. unauthorised
+// 9. import the bundle back
+await page.click("nav a:has-text('Import')");
+await page.waitForSelector("#b-path");
+await page.fill("#b-path", bundlePath);
+await page.waitForSelector("#d-bundle .pill", { timeout: 10000 });
+console.log("bundle detect:", (await text("#d-bundle .detect-row"))?.slice(0, 100));
+await page.fill("#b-name", "Restored from bundle");
+await page.uncheck("#b-current");
+console.log("bundle start enabled:", await page.locator("#b-start").isEnabled());
+await page.click("#b-start");
+await page.waitForSelector(".success", { timeout: 60000 });
+console.log("bundle import:", (await text(".success"))?.slice(0, 120));
+await page.goto(`${BASE}/#/library`);
+await page.waitForFunction(() => document.querySelectorAll(".ds-card").length === 2);
+page.once("dialog", (d) => d.accept());
+await page.click(".ds-card:not(.current) button[data-act=remove]");
+await page.waitForFunction(() => document.querySelectorAll(".ds-card").length === 1);
+console.log("bundle round trip ok");
+
+// 10. unauthorised
 const ctx2 = await browser.newContext();
 const p2 = await ctx2.newPage();
 await p2.goto(`${BASE}/#/library`);

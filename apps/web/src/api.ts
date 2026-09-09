@@ -1,7 +1,7 @@
 /* Typed client for phewas_server API v1, with the per-launch bearer token. */
 import type {
-  DatasetInfo, DictionaryInfo, FsListing, GenePage, InspectAnnotation, InspectSumstats, Job, Library, Meta,
-  ProfileInfo, SearchResult, VariantPage,
+  DatasetInfo, DictionaryInfo, FsListing, GenePage, InspectAnnotation, InspectBundle, InspectSumstats, Job, Library,
+  Meta, ProfileInfo, SearchResult, VariantPage,
 } from "./types";
 
 const TOKEN_KEY = "phewas.token";
@@ -62,6 +62,9 @@ export const api = {
   inspect: (body: { sumstats?: string; annotation?: string; profile?: string }) =>
     post<{ sumstats?: InspectSumstats; annotation?: InspectAnnotation }>("/api/v1/import/inspect", body),
   startImport: (body: Record<string, unknown>) => post<Job>("/api/v1/import/jobs", body),
+  inspectBundle: (path: string) => post<InspectBundle>("/api/v1/import/inspect-bundle", { path }),
+  importBundle: (body: { path: string; name?: string | null; make_current?: boolean }) => post<Job>("/api/v1/import/bundle", body),
+  exportDataset: (id: string, path: string) => post<Job>(`/api/v1/datasets/${q(id)}/export`, { path }),
   jobs: () => get<Job[]>("/api/v1/jobs"),
   job: (id: string) => get<Job>(`/api/v1/jobs/${q(id)}`),
   cancelJob: (id: string) => post<Job>(`/api/v1/jobs/${q(id)}/cancel`),

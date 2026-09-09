@@ -3,7 +3,7 @@ import { api, watchJob } from "../api";
 import { esc, fmtBytes, fmtNum } from "../format";
 import { href } from "../router";
 import { invalidateLibrary } from "../state";
-import type { InspectAnnotation, InspectSumstats, Job } from "../types";
+import type { InspectAnnotation, InspectBundle, InspectSumstats, Job } from "../types";
 import { pickFile } from "../components/filepicker";
 import { el, val } from "../components/table";
 
@@ -12,6 +12,9 @@ const STEPS: [string, string][] = [
   ["stage", "Reading and sorting the summary statistics"], ["assoc", "Building associations"],
   ["annotation", "Importing annotation"], ["derive", "Deriving gene and variant summaries"],
   ["finalize", "Hashing sources and writing the manifest"], ["hash", "Hashing sources"], ["done", "Done"],
+];
+const BUNDLE_STEPS: [string, string][] = [
+  ["extract", "Extracting and verifying the bundle"], ["done", "Done"],
 ];
 
 export async function renderImport($app: HTMLElement, signal?: AbortSignal): Promise<void> {
@@ -57,6 +60,25 @@ export async function renderImport($app: HTMLElement, signal?: AbortSignal): Pro
       <div class="form-actions">
         <button id="i-start" class="primary" disabled>Start import</button>
         <span id="i-hint" class="note">Choose a summary-statistics file to continue.</span>
+      </div>
+    </div>
+    <h2>Or import a dataset bundle</h2>
+    <div class="subtitle">A <span class="mono">.phewasds</span> file exported from another PheWAS Browser
+      (Library → Export…) contains a ready-made dataset; nothing is recomputed.</div>
+    <div class="panel wizard">
+      <div class="form-row">
+        <label for="b-path">Dataset bundle</label>
+        <div class="path-row"><input id="b-path" type="text" spellcheck="false" placeholder="/path/to/dataset.phewasds">
+          <button id="b-browse">Browse…</button></div>
+        <div id="d-bundle" class="detect"></div>
+      </div>
+      <div class="form-grid">
+        <label>Name <span class="dim">(optional, keeps the bundle's name if empty)</span><input id="b-name" type="text"></label>
+        <label class="chk"><input id="b-current" type="checkbox" checked> make it the current dataset</label>
+      </div>
+      <div class="form-actions">
+        <button id="b-start" class="primary" disabled>Import bundle</button>
+        <span id="b-hint" class="note">Choose a bundle to continue.</span>
       </div>
     </div>`;
 
@@ -137,6 +159,61 @@ export async function renderImport($app: HTMLElement, signal?: AbortSignal): Pro
       el<HTMLButtonElement>("i-start").disabled = false;
     }
   };
+
+  /* ---- bundle section ---- */
+  let bundleOk = false;
+  const refreshBundle = () => {
+    if (!formActive()) return;
+    el<HTMLButtonElement>("b-start").disabled = !bundleOk;
+    el("b-hint").textContent = !val("b-path") ? "Choose a bundle to continue." : bundleOk ? "Ready." : "Fix the problems above to continue.";
+  };
+  const inspectBundle = async () => {
+    if (!formActive()) return;
+    const path = val("b-path").trim();
+    const current = () => formActive() && path === val("b-path").trim();
+    const $d = el("d-bundle");
+    bundleOk = false;
+    refreshBundle();
+    if (!path) { $d.innerHTML = ""; return; }
+    $d.innerHTML = '<div class="loading">Inspecting…</div>';
+    try {
+      const r = await api.inspectBundle(path);
+      if (!current()) return;
+      $d.innerHTML = bundleHtml(r);
+      bundleOk = r.exists && r.problems.length === 0;
+    } catch (e) { if (!current()) return; $d.innerHTML = `<div class="error">${esc((e as Error).message)}</div>`; }
+    refreshBundle();
+  };
+  el<HTMLButtonElement>("b-browse").onclick = () => pickFile(val("b-path") ? val("b-path").replace(/[\\/][^\\/]*$/, "") : undefined,
+    (p) => { if (formActive()) { el<HTMLInputElement>("b-path").value = p; void inspectBundle(); } }, "bundle");
+  let bt: number | undefined;
+  el("b-path").addEventListener("input", () => { bundleOk = false; refreshBundle(); clearTimeout(bt); bt = window.setTimeout(() => void inspectBundle(), 400); });
+  el("b-path").addEventListener("change", () => void inspectBundle());
+  el<HTMLButtonElement>("b-start").onclick = async () => {
+    el<HTMLButtonElement>("b-start").disabled = true;
+    try {
+      const job = await api.importBundle({ path: val("b-path").trim(), name: val("b-name").trim() || null,
+        make_current: el<HTMLInputElement>("b-current").checked });
+      if (formActive()) renderProgress($app, job, signal);
+    } catch (e) {
+      if (!formActive()) return;
+      alert((e as Error).message);
+      el<HTMLButtonElement>("b-start").disabled = false;
+    }
+  };
+}
+
+function bundleHtml(r: InspectBundle): string {
+  if (!r.exists) return `<div class="problem">File not found.</div>`;
+  if (!r.dataset_id) return r.problems.map((p) => `<div class="problem">${esc(p)}</div>`).join("");
+  const s = r.stats ?? {};
+  return `
+    <div class="detect-row"><b>${esc(r.name ?? "")}</b> · ${fmtBytes(r.bytes)} · exported ${esc(r.created ?? "?")}
+      ${r.build ? ` · ${esc(r.build)}` : ""}${r.dictionary ? ` · ${esc(r.dictionary.label)}` : ""}</div>
+    <div class="detect-row">${fmtNum(s["n_genes"])} genes · ${fmtNum(s["n_variants"])} variants · ${fmtNum(s["n_traits"])} phenotypes ·
+      cohorts ${(r.cohorts ?? []).map((c) => `<span class="pill ${c.is_meta ? "meta" : ""}">${esc(c.id)}</span>`).join(" ")}</div>
+    ${r.notes ? `<div class="detect-row dim">${esc(r.notes)}</div>` : ""}
+    ${r.problems.map((p) => `<div class="problem">${esc(p)}</div>`).join("")}`;
 }
 
 function sumstatsHtml(r: InspectSumstats): string {
@@ -166,12 +243,14 @@ function annotationHtml(r: InspectAnnotation): string {
 
 /* ---------------------------------------------------------------- progress */
 function renderProgress($app: HTMLElement, job: Job, signal?: AbortSignal): void {
-  const req = job.request as { sumstats?: string; annotation?: string | null; name?: string };
+  const req = job.request as { sumstats?: string; annotation?: string | null; name?: string; bundle?: string };
+  const isBundle = job.kind === "import-bundle";
+  const steps = isBundle ? BUNDLE_STEPS : STEPS.filter(([k]) => k !== "hash" && (k !== "annotation" || req.annotation));
   $app.innerHTML = `
     <h1>Importing <span class="dim">${esc(req.name ?? "")}</span></h1>
-    <div class="subtitle mono" style="font-size:12px">${esc(req.sumstats ?? "")}${req.annotation ? `<br>${esc(req.annotation)}` : ""}</div>
+    <div class="subtitle mono" style="font-size:12px">${esc(req.sumstats ?? req.bundle ?? "")}${req.annotation ? `<br>${esc(req.annotation)}` : ""}</div>
     <div class="panel">
-      <ol class="steps" id="steps">${STEPS.filter(([k]) => k !== "hash" && (k !== "annotation" || req.annotation))
+      <ol class="steps" id="steps">${steps
         .map(([k, label]) => `<li data-step="${k}"><span class="step-label">${esc(label)}</span><span class="step-msg dim"></span></li>`).join("")}</ol>
       <div class="progress"><div class="bar" id="bar"></div></div>
       <div class="form-actions">
@@ -180,7 +259,7 @@ function renderProgress($app: HTMLElement, job: Job, signal?: AbortSignal): void
       </div>
       <div id="result"></div>
     </div>`;
-  const order = STEPS.map(([k]) => k);
+  const order = (isBundle ? BUNDLE_STEPS : STEPS).map(([k]) => k);
   const bar = el("bar"), status = el("status"), result = el("result");
   const cancel = el<HTMLButtonElement>("cancel");
   const update = (j: Job) => {
@@ -192,7 +271,7 @@ function renderProgress($app: HTMLElement, job: Job, signal?: AbortSignal): void
       li.classList.toggle("done", j.status === "done" || i < idx);
       li.classList.toggle("active", i === idx && j.status === "running");
       if (i === idx) li.querySelector(".step-msg")!.textContent = j.status === "done" && step === "done" ? ""
-        : j.total > 1 ? `${fmtNum(j.done)} / ${fmtNum(j.total)} · ${j.message}` : j.message;
+        : j.total > 1 ? (isBundle ? `${fmtBytes(j.done)} / ${fmtBytes(j.total)}` : `${fmtNum(j.done)} / ${fmtNum(j.total)} · ${j.message}`) : j.message;
     });
     const frac = j.status === "done" ? 1 : j.total > 1 ? j.done / j.total : idx >= 0 ? idx / order.length : 0;
     bar.style.width = `${Math.round(frac * 100)}%`;
@@ -210,7 +289,7 @@ function renderProgress($app: HTMLElement, job: Job, signal?: AbortSignal): void
     invalidateLibrary();
     const $r = result;
     if (final.status === "done" && final.result) {
-      const s = final.result.stats;
+      const s = final.result.stats ?? {};
       $r.innerHTML = `<div class="success">Imported <b>${esc(final.result.name)}</b> in ${final.result.seconds}s:
           ${fmtNum(s["n_genes"])} genes, ${fmtNum(s["n_variants"])} variants, ${fmtNum(s["n_traits"])} phenotypes,
           ${fmtNum(s["n_assoc"])} associations.</div>

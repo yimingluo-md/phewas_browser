@@ -4,7 +4,7 @@ No web-framework dependencies: this package is shared by the FastAPI sidecar, th
 `phewas` command line and the test-suite.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.5.0"
 
 #: Version of the on-disk DuckDB schema written by this package (see schema.py).
 SCHEMA_VERSION = 1

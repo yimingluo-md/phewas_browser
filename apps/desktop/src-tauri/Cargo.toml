@@ -1,6 +1,6 @@
 [package]
 name = "phewas-browser"
-version = "0.1.0"
+version = "0.5.0"
 description = "PheWAS Browser — local browser for variant-level PheWAS summary statistics"
 authors = ["Yiming Luo"]
 edition = "2021"

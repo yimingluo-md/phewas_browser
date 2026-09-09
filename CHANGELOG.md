@@ -3,7 +3,53 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased]
+## [0.5.0] — 2026-09-09 — Phases 2–4: the desktop app
+
+### Added — Phase 4: distribution
+- **Signed, notarized macOS builds.** `release.yml` imports a Developer ID certificate into a
+  temporary keychain, signs every Mach-O of the PyInstaller sidecar with the hardened runtime and
+  the app entitlements (`scripts/sign_sidecar.sh`), lets Tauri sign and notarize the `.app`,
+  staples the DMG and verifies with `codesign`, `spctl` and `stapler`. Without the six Apple
+  secrets (`docs/RELEASING.md`) the workflow still produces ad-hoc builds. No auto-updater: the
+  repository stays private and the app never uses the network.
+- **`.phewasds` dataset bundles** (`phewas_core.bundle`): one uncompressed tar with an index,
+  the manifest, the database and the import log. Export from **Library → Export…**,
+  `phewas export` or `POST /datasets/{id}/export`; import from the import page, `phewas
+  import-bundle` or `POST /import/bundle` (inspect first with `/import/inspect-bundle`). Import
+  verifies the SHA-256 while extracting, keeps the dataset id, refuses corrupted/foreign/newer
+  bundles and duplicates, and finalises atomically. Export and import run as jobs with progress.
+- First-run **Welcome** screen stating that the application contains no data and where imported
+  datasets are stored.
+- `scripts/set_version.sh` sets the version in every file that carries it; `docs/RELEASING.md`.
+- Tests: bundle layout, round trip, corruption/foreign/newer refusal, CLI and API (58 total);
+  the browser smoke test now exports, removes and re-imports a dataset.
+
+### Added — Phase 3: native shell
+- `apps/desktop`: Tauri 2 application (`PheWAS Browser.app`, Windows NSIS installer). The Rust
+  shell generates a per-launch token, starts the frozen `phewas-server` sidecar on a random
+  loopback port, waits for its ready lines, shows sidecar errors on the loading page, and
+  provides native menus (Import Dataset…, Library, Show Data Folder, About), native file
+  dialogs, single-instance behaviour and a clean quit that terminates the sidecar. The sidecar
+  watches its parent process and exits if the app disappears.
+- `scripts/build_sidecar.sh` + `packages/phewas_server/pyinstaller/`: one-directory PyInstaller
+  build per architecture, named for Tauri's `externalBin` (macOS arm64, macOS Intel, Windows).
+- `.github/workflows/release.yml` builds all three targets on demand and on `v*` tags; CI adds a
+  Linux `cargo check` and a frozen-sidecar start test.
+- The dataset library moved to Application Support (`%LOCALAPPDATA%` on Windows); the legacy
+  launchers were removed.
+
+### Added — Phase 2: multi-dataset web UI
+- `apps/web`: the frontend rewritten as Vite + TypeScript modules (`api.ts`, `router.ts`,
+  `pages/…`, `components/…`, `plots/manhattan.ts` with Plotly loaded lazily). Cohort column
+  groups and annotation cards render from each dataset's manifest and the field registry.
+- `packages/phewas_server`: FastAPI API v1, dataset-scoped (`/api/v1/datasets/{id}/…`), bearer
+  token per launch, loopback only, no CORS; import jobs with Server-Sent-Events progress and
+  cancel; a file-system picker endpoint for the browser-only mode; serves `apps/web/dist`.
+- New screens: **Library** (dataset cards, switch, rename, remove), **Import** (path → detected
+  profile → validation report → live progress), **Dataset details** (manifest, sources with
+  checksums, warnings, log).
+- Playwright smoke test (`apps/web/e2e/smoke.mjs`) covering import, browsing and the library;
+  browser regression tests for audit fixes.
 
 ### Fixed — post-migration audit
 - `phewas serve` launches the current server and supports importing into an empty library.
@@ -22,7 +68,7 @@ All notable changes to this project are documented here. The format follows
 - The migration comparison detects numeric values lost to NULL instead of reporting them as identical.
 - Browser regression tests run in CI; Python tests also run on Windows.
 
-### Phase 1: core extraction
+## [0.3.0] — 2026-09-08 — Phase 1: core extraction
 
 ### Added
 - `packages/phewas_core`: the new engine, no web dependencies.

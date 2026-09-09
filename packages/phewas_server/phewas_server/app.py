@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from phewas_core import __version__ as core_version
+from phewas_core.bundle import inspect_bundle
 from phewas_core.dictionaries import builtin_dictionaries
 from phewas_core.importer import ImportRequest, inspect_annotation, inspect_sumstats
 from phewas_core.profiles import all_profiles
@@ -42,7 +43,7 @@ from . import __version__
 from .jobs import JobManager
 from .settings import Settings
 
-DATA_EXTS = {".tsv", ".txt", ".csv", ".gz", ".bgz", ".zst", ".parquet", ".json"}
+DATA_EXTS = {".tsv", ".txt", ".csv", ".gz", ".bgz", ".zst", ".parquet", ".json", ".phewasds"}
 
 
 # ---------------------------------------------------------------- state
@@ -96,6 +97,16 @@ class InspectBody(BaseModel):
     sumstats: str | None = None
     annotation: str | None = None
     profile: str | None = None
+
+
+class ExportBody(BaseModel):
+    path: str  # file or directory
+
+
+class BundleBody(BaseModel):
+    path: str
+    name: str | None = None
+    make_current: bool = True
 
 
 class DatasetPatch(BaseModel):
@@ -294,6 +305,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         try:
             job = jobs.start_import(req)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e)) from None
+        return job.snapshot()
+
+    @v1.post("/import/inspect-bundle")
+    def inspect_bundle_route(body: BundleBody) -> dict[str, Any]:
+        return inspect_bundle(Path(body.path).expanduser(), library)
+
+    @v1.post("/import/bundle", status_code=202)
+    def start_import_bundle(body: BundleBody) -> dict[str, Any]:
+        bundle = Path(body.path).expanduser()
+        if not bundle.is_file():
+            raise HTTPException(400, f"bundle not found: {bundle}")
+        try:
+            job = jobs.start_import_bundle(bundle, make_current=body.make_current, name=body.name)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e)) from None
+        return job.snapshot()
+
+    @v1.post("/datasets/{dataset_id}/export", status_code=202)
+    def export_dataset(dataset_id: str, body: ExportBody) -> dict[str, Any]:
+        out = Path(body.path).expanduser()
+        if not out.is_dir() and not out.parent.is_dir():
+            raise HTTPException(400, f"destination folder does not exist: {out.parent}")
+        try:
+            job = jobs.start_export(dataset_id, out)
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from None
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from None
         return job.snapshot()

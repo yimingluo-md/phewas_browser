@@ -8,6 +8,7 @@
     "core:default",
     "core:window:allow-set-title",
     "dialog:allow-open",
+    "dialog:allow-save",
     "dialog:allow-message",
     "opener:allow-open-url",
     "opener:allow-reveal-item-in-dir"

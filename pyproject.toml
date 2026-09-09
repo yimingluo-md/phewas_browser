@@ -1,6 +1,6 @@
 [project]
 name = "phewas-browser"
-version = "0.1.0"
+version = "0.5.0"
 description = "Local browser for variant-level PheWAS summary statistics (FastAPI + DuckDB)."
 readme = "README.md"
 requires-python = ">=3.12"

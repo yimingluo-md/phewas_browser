@@ -1,6 +1,6 @@
 [project]
 name = "phewas-core"
-version = "0.1.0"
+version = "0.5.0"
 description = "Dataset library, import pipeline and query layer for the PheWAS Browser (no web dependencies)."
 requires-python = ">=3.12"
 dependencies = ["duckdb==1.5.5"]

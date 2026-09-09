@@ -2,8 +2,11 @@ name: Release build
 
 # Builds the desktop app for macOS (Apple Silicon + Intel) and Windows.
 # Runs on demand (Actions -> Release build -> Run workflow) and on version tags (v*).
-# Signing/notarization is Phase 4: these builds are ad-hoc signed on macOS and unsigned on
-# Windows, so macOS shows "cannot verify developer" (right-click -> Open, once).
+#
+# macOS signing + notarization happen automatically when the repository secrets described in
+# docs/RELEASING.md are present (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+# APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID). Without them the build is
+# ad-hoc signed and macOS asks for right-click -> Open once. Windows builds are unsigned.
 
 on:
   workflow_dispatch:
@@ -21,6 +24,8 @@ jobs:
           - { os: macos-14,       name: macos-arm64, target: aarch64-apple-darwin }
           - { os: macos-15-intel, name: macos-intel, target: x86_64-apple-darwin }
           - { os: windows-latest, name: windows-x64, target: x86_64-pc-windows-msvc }
+    env:
+      SIGN: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_CERTIFICATE != '' && 'yes' || 'no' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,14 +55,71 @@ jobs:
         shell: bash
         run: scripts/build_sidecar.sh
 
-      - name: Desktop app
-        working-directory: apps/desktop
-        shell: bash
+      - name: Import the Developer ID certificate
+        if: env.SIGN == 'yes'
         env:
-          APPLE_SIGNING_IDENTITY: "-"   # ad-hoc until Phase 4 provides a Developer ID
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A \
+            -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+      - name: Sign the sidecar (hardened runtime)
+        if: env.SIGN == 'yes'
+        run: scripts/sign_sidecar.sh "${{ secrets.APPLE_SIGNING_IDENTITY }}"
+
+      - name: Desktop app (signed + notarized)
+        if: env.SIGN == 'yes'
+        working-directory: apps/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           npm ci
           npx tauri build --target ${{ matrix.target }} --ci
+
+      - name: Desktop app (ad-hoc / unsigned)
+        if: env.SIGN != 'yes'
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: |
+          npm ci
+          npx tauri build --target ${{ matrix.target }} --ci
+
+      - name: Verify notarization (Gatekeeper assessment)
+        if: env.SIGN == 'yes'
+        run: |
+          set -euo pipefail
+          b=apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+          app="$b/macos/PheWAS Browser.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          for dmg in "$b"/dmg/*.dmg; do
+            if ! xcrun stapler validate "$dmg" >/dev/null 2>&1; then
+              echo "DMG not stapled by the bundler; notarizing it explicitly"
+              xcrun notarytool submit "$dmg" --apple-id "${{ secrets.APPLE_ID }}" \
+                --password "${{ secrets.APPLE_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
+              xcrun stapler staple "$dmg"
+            fi
+            xcrun stapler validate "$dmg"
+            spctl --assess --type install --verbose=2 "$dmg" || spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          done
+          echo "signed and notarized"
 
       - name: Collect
         shell: bash
@@ -69,12 +131,17 @@ jobs:
           if [ -d "$b/macos" ]; then
             ditto -c -k --keepParent "$b/macos/PheWAS Browser.app" "out/PheWAS-Browser-${{ matrix.name }}.app.zip"
           fi
+          echo "signed=${SIGN}" > out/BUILD-INFO.txt
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
           name: PheWAS-Browser-${{ matrix.name }}
           path: out/*
           if-no-files-found: error
+
+      - name: Remove the signing keychain
+        if: always() && env.SIGN == 'yes'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

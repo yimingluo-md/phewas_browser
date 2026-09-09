@@ -5,6 +5,22 @@ import { esc, fmtBytes } from "../format";
 interface TauriDialog {
   open(opts: { multiple?: boolean; directory?: boolean; defaultPath?: string; title?: string;
     filters?: { name: string; extensions: string[] }[] }): Promise<string | string[] | null>;
+  save(opts: { defaultPath?: string; title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+}
+const DATA_FILTERS = [{ name: "Data files", extensions: ["tsv", "txt", "csv", "gz", "bgz", "zst", "parquet"] },
+  { name: "All files", extensions: ["*"] }];
+const BUNDLE_FILTERS = [{ name: "PheWAS dataset bundle", extensions: ["phewasds"] }];
+
+/** Choose where to write a dataset bundle. Native save dialog in the app; a path prompt in a plain browser. */
+export function saveBundle(defaultName: string, onPick: (path: string) => void): void {
+  const native = tauriDialog();
+  if (native) {
+    void native.save({ defaultPath: defaultName, title: "Export dataset bundle", filters: BUNDLE_FILTERS })
+      .then((p) => { if (p) onPick(p); });
+    return;
+  }
+  const p = prompt("Save the bundle to (a .phewasds file path, or a folder):", `~/Downloads/${defaultName}`);
+  if (p && p.trim()) onPick(p.trim());
 }
 const tauriDialog = (): TauriDialog | null =>
   ((window as unknown as { __TAURI__?: { dialog?: TauriDialog } }).__TAURI__?.dialog) ?? null;
@@ -12,13 +28,13 @@ const tauriDialog = (): TauriDialog | null =>
 /** True when running inside the desktop app (native dialogs, menus). */
 export const isDesktop = (): boolean => tauriDialog() !== null;
 
-export function pickFile(start: string | undefined, onPick: (path: string) => void): void {
+export function pickFile(start: string | undefined, onPick: (path: string) => void, kind: "data" | "bundle" = "data"): void {
   const native = tauriDialog();
   if (native) {
     void native.open({
-      multiple: false, directory: false, defaultPath: start, title: "Choose a data file",
-      filters: [{ name: "Data files", extensions: ["tsv", "txt", "csv", "gz", "bgz", "zst", "parquet"] },
-                { name: "All files", extensions: ["*"] }],
+      multiple: false, directory: false, defaultPath: start,
+      title: kind === "bundle" ? "Choose a dataset bundle" : "Choose a data file",
+      filters: kind === "bundle" ? BUNDLE_FILTERS : DATA_FILTERS,
     }).then((p) => { if (typeof p === "string" && p) onPick(p); });
     return;
   }

@@ -1,6 +1,6 @@
 [project]
 name = "phewas-server"
-version = "0.1.0"
+version = "0.5.0"
 description = "FastAPI backend of the PheWAS Browser: dataset-scoped API v1, import jobs, static frontend."
 requires-python = ">=3.12"
 dependencies = ["phewas-core", "fastapi==0.141.1", "uvicorn==0.52.4"]

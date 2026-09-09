@@ -1,6 +1,6 @@
 # PheWAS Browser — Mac App Architecture & Migration Plan
 
-*Status: v1.2 — Phase 1 implemented · 2026-09-08 · author: Yiming Luo (drafted with Claude)*
+*Status: v1.3 — Phases 0–4 implemented · 2026-09-09 · author: Yiming Luo (drafted with Claude)*
 
 ## 0. Where we are
 
@@ -41,7 +41,7 @@ What blocks the goals (import/update by the user, no bundled data, many datasets
 
 **Non-goals (for now)**
 
-- Multi-user server deployment, cloud sync, or any network feature beyond the app updater.
+- Multi-user server deployment, cloud sync, or any network feature. The app makes no network requests at all (decision §4.4: no auto-updater).
 - Running association tests inside the app (it browses results; it does not compute them).
 - Mobile.
 
@@ -54,7 +54,7 @@ What blocks the goals (import/update by the user, no bundled data, many datasets
 │   • native window, menus (File ▸ Import Dataset…, Manage Datasets…, Export…)        │
 │   • file-open dialogs, Application Support paths, Keychain, single-instance           │
 │   • spawns sidecar, passes {port, token}; kills it on quit                            │
-│   • tauri-plugin-updater (signed update manifest)                                    │
+│   • no updater, no network: a new version is a new DMG (decision §4.4)                │
 │         │ WebView (system WKWebView)          │ child process                        │
 │         ▼                                     ▼                                       │
 │  Frontend (Vite + TypeScript)         phewas-server sidecar (frozen Python 3.12)     │
@@ -222,8 +222,9 @@ Keep the screens, change the foundation: **Vite + TypeScript**, ES modules (`api
 
 - **Sidecar**: PyInstaller `--onedir` of `phewas_server` (FastAPI + uvicorn + duckdb ≈ 60–80 MB per architecture), shipped in `Contents/Resources/sidecar/`. Startup < 1 s (onefile would extract on every launch; avoid it). Reproducible from `requirements.lock.txt`, replacing `prepare_macos_runtime.sh`.
 - **Architectures**: separate Apple Silicon and Intel builds (as today) rather than a universal binary — PyInstaller cannot emit universal2 unless every wheel is universal2, and DuckDB's are not. GitHub Actions matrix: `macos-14` (arm64), `macos-15-intel`, `windows-latest`. Tauri's `externalBin` naming (`phewas-server-aarch64-apple-darwin`, `…-x86_64-apple-darwin`, `…-x86_64-pc-windows-msvc.exe`) supports this directly.
-- **Signing/notarization**: Developer ID Application certificate + `notarytool`, driven by Tauri's bundler from CI secrets (`APPLE_CERTIFICATE`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`). Hardened runtime with the entitlements the sidecar needs (`com.apple.security.cs.allow-unsigned-executable-memory` is *not* needed for CPython 3.12 + DuckDB wheels; verify in Phase 3). Result: double-click to open, no "Open Anyway".
-- **Updater**: `tauri-plugin-updater` with a minisign-signed `latest.json`. Since the source repo is private and the updater fetches anonymously, publish releases to a small **public** `phewas-browser-releases` repo (or an institutional HTTPS path). The app contains no data, so its binaries are not RUO.
+- **Signing/notarization** (Phase 4, `docs/RELEASING.md`): Developer ID Application certificate + `notarytool`, driven from CI secrets (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`). The release workflow imports the certificate into a temporary keychain, signs every Mach-O of the PyInstaller sidecar with the hardened runtime and `entitlements.plist` (`scripts/sign_sidecar.sh` — Tauri only signs `Contents/MacOS` and `Frameworks`, and the sidecar ships as a resource), lets Tauri sign + notarize the `.app`, staples the DMG and verifies with `codesign`/`spctl`/`stapler`. Without the secrets the same workflow produces ad-hoc builds. Result: double-click to open, no "Open Anyway".
+- **Updates**: none built in. The repository stays private and the app never talks to the network; a new release is a new DMG handed to collaborators, dragged over the old one. The dataset library in Application Support is independent of the app version.
+- **Dataset bundles**: `.phewasds` (uncompressed tar: `phewasds.json` index, `manifest.json`, `dataset.duckdb`, `import.log`) exported from **Library → Export…** or `phewas export`, imported through the import page or `phewas import-bundle`. Import verifies the SHA-256 while extracting, keeps the dataset's id (collaborators share the same id), refuses bundles from a newer schema, and finalises through the normal atomic rename. This is how RUO data travels between collaborators — never inside the app.
 - **Windows**: same pipeline produces a signed-if-possible `.msi`/NSIS installer; the sidecar is PyInstaller on Windows. This replaces the `.bat` launchers.
 - **Sizes**: DMG ≈ 90–110 MB per architecture. Datasets live in Application Support and are never inside the app.
 
@@ -262,7 +263,7 @@ Each phase ends with something usable; the existing launchers keep working until
 | **1 — Core extraction** | `phewas import …` CLI builds a dataset directory from the *existing* files via the built-in profile; `app.py` serves whichever dataset is chosen. UI unchanged. | `phewas_core` package; long-format schema; dataset registry/manifest; importer job with progress; annotation field registry; query layer + legacy adapter; equivalence tests new == legacy. Benchmark done (ADR-0001). | 1.5–2 wk ✅ — real IEI dataset imported in 142 s and verified identical to the legacy database (`scripts/compare_with_legacy.py`) |
 | **2 — Multi-dataset web UI** | Library page, dataset switcher, import wizard (paths typed/pasted), progress, cohort-dynamic columns, field-driven variant page, token auth. Still launched via `launch.sh`. | Vite + TS migration of `app.js`; new API v1; SSE progress; validation report UI | 2 wk |
 | **3 — Native shell** | Unsigned `PheWAS Browser.app` for arm64 + Intel and a Windows build, sidecar auto-start, native file dialogs and menus, Application Support storage, clean quit | Tauri project (`apps/desktop`); PyInstaller sidecar (`scripts/build_sidecar.sh`); ready-line handoff + parent watchdog; single-instance; loading page shows sidecar errors; release workflow builds all three targets; legacy launcher path removed | 1.5 wk ✅ |
-| **4 — Distribution** | Signed + notarized DMG, MSI, GitHub Actions release pipeline, auto-update, user guide | Developer ID enrolment, CI secrets, updater keys, public releases repo, `.phewasds` export/import | 1 wk |
+| **4 — Distribution** | Signed + notarized DMG through the release pipeline (once the Apple secrets are set), `.phewasds` dataset bundles (export/import in UI, CLI and API), first-run screen stating the app contains no data, `docs/RELEASING.md`, `scripts/set_version.sh` | Certificate import + sidecar signing + notarization verification in `release.yml`; `phewas_core.bundle`; export/import-bundle jobs and routes; welcome screen; e2e round trip | 1 wk ✅ (signed path awaits the Developer ID secrets) |
 | **5 — Hardening & new features** | Encryption at rest; gene-level/burden results table; cross-dataset compare (same variant in v8 vs v9); region/locus view; saved filters; report export | Each feature = new `phewas_core` module + field/profile entries + one page | ongoing |
 
 \*Effort is focused development time for one person familiar with the code; calendar time will be longer.
@@ -274,7 +275,7 @@ Each phase ends with something usable; the existing launchers keep working until
 | 1 | Long-format `assoc` vs `MAP` column vs keep-wide-with-metadata | **Long format** — benchmarked on the real 68.8 M-row dataset, see [ADR-0001](adr/0001-storage-layout.md) (+15 % disk, parity on page queries, MAP slowest). Input files keep their current wide layout. |
 | 2 | Dataset immutability + versioning vs in-place replace | **Keep previous version until the user deletes it.** |
 | 3 | Frontend framework | **Port `app.js` as TypeScript modules first**; adopt Svelte for the wizard/library screens if and when their complexity warrants it. |
-| 4 | Where the updater downloads releases from | **This repository will be made public at the first release**, so the updater points at its GitHub Releases (`latest.json` + signed installers). The app contains no data, so nothing RUO becomes public; the RUO datasets remain outside the repo. |
+| 4 | Where the updater downloads releases from | *Revised 2026-09-09:* **the repository stays private and there is no auto-updater.** The app is shared with a few close collaborators only: the signed DMG and a `.phewasds` bundle are handed over through an institutional channel. Direct Developer ID distribution — no App Store. (Originally: make the repo public at first release and point `tauri-plugin-updater` at its GitHub Releases.) |
 | 5 | Minimum macOS | **12 (Monterey).** |
 
 ## 5. Risks and mitigations
@@ -284,7 +285,7 @@ Each phase ends with something usable; the existing launchers keep working until
 | Import of 70 M rows exhausts memory or takes > 5 min on a laptop | DuckDB `memory_limit`/`temp_directory`, streaming `read_csv`, pre-sort by gene; progress + cancel; CLI path for cluster builds; benchmark early (Phase 1) |
 | DuckDB storage-format compatibility across versions | Pin `duckdb` in the lock file; record `duckdb_version` in manifest; forward-compat is guaranteed by DuckDB ≥ 1.0, and the app offers "re-index dataset" if a newer app can't open an old file |
 | PyInstaller sidecar flagged by Gatekeeper/notarization | Sign every Mach-O inside the bundle (Tauri does this for `externalBin`; verify for onedir contents with `codesign --deep --strict`); test notarization in Phase 3 not 4 |
-| Updater cannot reach private repo | Public releases repo containing only binaries |
+| Collaborators run stale versions (no updater) | The About dialog and the manifest record the version; release notes go with every DMG; the dataset library is independent of the app version, so upgrading is a drag-and-drop |
 | Two toolchains (Rust, Node) intimidate future maintainers | The Rust layer is < 300 lines and rarely changes; document "you only need Python to change import/query logic" in `CONTRIBUTING.md`; CI does all builds |
 | Users' files have layouts we have not seen | Profile wizard with column-mapping UI; profiles are JSON and shareable; unknown columns are preserved as extra stats, not dropped |
 | RUO data exposure via local HTTP | Random port, loopback only, per-launch bearer token, no CORS wildcard; optional encryption at rest |
@@ -293,4 +294,6 @@ Each phase ends with something usable; the existing launchers keep working until
 
 1. ~~Confirm the decisions in §4~~ done.
 2. ~~Phase 0~~ done: `pyproject.toml`, `uv.lock`, `ruff`, pytest, `tests/fixtures/make_synthetic.py`, `.github/workflows/ci.yml`.
-3. Phase 1 spike (1 day): unpivot the real sumstats into the long schema with DuckDB and time the variant/gene queries — this settles decision §4.1 before any further code is written.
+3. ~~Phases 1–4~~ done (see the roadmap and `CHANGELOG.md`).
+4. Add the six Apple secrets (`docs/RELEASING.md`) and re-run *Release build*; confirm the DMG opens with a double-click on a clean Mac.
+5. Phase 5 candidates, in the order they have been asked for: cross-dataset compare, gene-level/burden results, encryption at rest, region view.

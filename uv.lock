@@ -451,7 +451,7 @@ wheels = [
 
 [[package]]
 name = "phewas-browser"
-version = "0.1.0"
+version = "0.5.0"
 source = { virtual = "." }
 dependencies = [
     { name = "duckdb" },
@@ -492,7 +492,7 @@ dev = [
 
 [[package]]
 name = "phewas-core"
-version = "0.1.0"
+version = "0.5.0"
 source = { editable = "packages/phewas_core" }
 dependencies = [
     { name = "duckdb" },
@@ -503,7 +503,7 @@ requires-dist = [{ name = "duckdb", specifier = "==1.5.5" }]
 
 [[package]]
 name = "phewas-server"
-version = "0.1.0"
+version = "0.5.0"
 source = { editable = "packages/phewas_server" }
 dependencies = [
     { name = "fastapi" },

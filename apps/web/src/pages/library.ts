@@ -1,8 +1,9 @@
 /* Library: every imported dataset, with open / make current / rename / remove. */
-import { api } from "../api";
+import { api, watchJob } from "../api";
 import { esc, fmtBytes, fmtDate, fmtNum } from "../format";
 import { href } from "../router";
 import { invalidateLibrary, loadLibrary, setActive } from "../state";
+import { saveBundle } from "../components/filepicker";
 
 export async function renderLibrary($app: HTMLElement): Promise<void> {
   const lib = await loadLibrary(true);
@@ -10,11 +11,14 @@ export async function renderLibrary($app: HTMLElement): Promise<void> {
   setActive(null);
   if (!lib.datasets.length) {
     $app.innerHTML = `
-      <h1>Library</h1>
+      <h1>Welcome</h1>
       <div class="empty">
-        <p>No datasets yet. Import a summary-statistics file to start browsing.</p>
+        <p><b>This application contains no data.</b> Datasets you import are stored on this computer only, in
+          <span class="mono">${esc(lib.home)}</span>, and never leave it.</p>
+        <p>Start with a summary-statistics file (REGENIE meta-analysis or long layout, plus optional VEP
+          annotation), or with a <span class="mono">.phewasds</span> bundle exported from another PheWAS Browser.</p>
         <p><a class="button primary" href="${href.import()}">Import a dataset…</a></p>
-        <p class="note">Datasets are stored in <span class="mono">${esc(lib.home)}</span>.</p>
+        <p class="note">Research Use Only — datasets carry their own data-use notes; do not disseminate them.</p>
       </div>`;
     return;
   }
@@ -42,7 +46,9 @@ export async function renderLibrary($app: HTMLElement): Promise<void> {
             <a class="button" href="${href.info(d.id)}">Details</a>
             ${d.id !== lib.current ? `<button data-act="current">Make current</button>` : ""}
             <button data-act="rename">Rename</button>
+            <button data-act="export">Export…</button>
             <button data-act="remove" class="danger">Remove…</button>
+            <span class="note ds-status"></span>
           </div>
         </div>`).join("")}
     </div>`;
@@ -59,6 +65,9 @@ export async function renderLibrary($app: HTMLElement): Promise<void> {
             const name = prompt("Dataset name", entry.name);
             if (!name || name.trim() === entry.name) return;
             await api.patchDataset(id, { name: name.trim() });
+          } else if (btn.dataset.act === "export") {
+            saveBundle(`${entry.name.replace(/[^\w.-]+/g, "_")}.phewasds`, (path) => void exportTo(card, id, path));
+            return;
           } else if (btn.dataset.act === "remove") {
             if (!confirm(`Remove "${entry.name}" (${fmtBytes(entry.size_bytes)}) from disk? This cannot be undone.`)) return;
             await api.deleteDataset(id);
@@ -71,4 +80,29 @@ export async function renderLibrary($app: HTMLElement): Promise<void> {
       };
     });
   });
+}
+
+
+async function exportTo(card: HTMLElement, id: string, path: string): Promise<void> {
+  const status = card.querySelector<HTMLElement>(".ds-status")!;
+  const buttons = card.querySelectorAll<HTMLButtonElement>("button");
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const job = await api.exportDataset(id, path);
+    const final = await watchJob(job.id, (j) => {
+      if (!status.isConnected) return;
+      const pct = j.total > 1 ? ` ${Math.round((100 * j.done) / j.total)}%` : "";
+      status.textContent = j.step === "hash" ? `Checksumming…${pct}` : `Exporting…${pct}`;
+    });
+    if (!status.isConnected) return;
+    if (final.status === "done" && final.result?.path) {
+      status.innerHTML = `Exported to <span class="mono">${esc(final.result.path)}</span> (${fmtBytes(final.result.bytes)})`;
+    } else {
+      status.textContent = final.status === "cancelled" ? "Export cancelled." : `Export failed: ${final.error ?? "unknown error"}`;
+    }
+  } catch (e) {
+    if (status.isConnected) status.textContent = (e as Error).message;
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
 }

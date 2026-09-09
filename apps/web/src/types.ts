@@ -176,16 +176,33 @@ export interface InspectAnnotation {
   problems: string[];
 }
 
+export interface InspectBundle {
+  path: string;
+  exists: boolean;
+  bytes?: number;
+  dataset_id?: string;
+  name?: string | null;
+  created?: string | null;
+  app_version?: string | null;
+  cohorts?: Cohort[];
+  stats?: Record<string, number>;
+  dictionary?: { id: string; label: string } | null;
+  build?: string | null;
+  notes?: string;
+  warnings?: string[];
+  problems: string[];
+}
+
 export interface Job {
   id: string;
-  kind: string;
+  kind: "import" | "export" | "import-bundle";
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   step: string;
   done: number;
   total: number;
   message: string;
   error: string | null;
-  result: { dataset_id: string; name: string; seconds: number; stats: Record<string, number> } | null;
+  result: { dataset_id: string; name: string; seconds: number; stats?: Record<string, number>; path?: string; bytes?: number } | null;
   warnings: string[];
   created: number;
   started: number | null;
