@@ -18,6 +18,7 @@ dist/
 *.app/
 *.duckdb
 *.duckdb.wal
+*.phewasds
 
 # Toolchains / envs
 .venv/

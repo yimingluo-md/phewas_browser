@@ -10,22 +10,26 @@ typically **Research Use Only — do not disseminate**.
 
 ## Install
 
-The repository is private and the app is shared directly with collaborators: you receive a
-build and, separately, a `.phewasds` dataset bundle (see [Sharing datasets](#sharing-datasets)).
-Maintainers download builds from the repository's *Releases* (or from the artifacts of an
-*Actions → Release build* run):
+Download the app from [GitHub Releases](https://github.com/yimingluo-md/phewas_browser/releases/latest).
+No GitHub account is needed to download a public release. Study data is distributed separately
+as source files or a `.phewasds` dataset bundle (see [Sharing datasets](#sharing-datasets)).
 
 | Platform | File |
 |---|---|
-| macOS, Apple Silicon | `PheWAS Browser_…_aarch64.dmg` |
-| macOS, Intel | `PheWAS Browser_…_x64.dmg` |
-| Windows 10/11 | `PheWAS Browser_…_x64-setup.exe` |
+| macOS, Apple Silicon (M1, M2, M3, M4 and later) | `PheWAS-Browser-0.5.0-macos-arm64.dmg` |
+| macOS, Intel | `PheWAS-Browser-0.5.0-macos-intel.dmg` |
 
-Open the DMG and drag the app to *Applications*. Signed and notarized builds (see
-`docs/RELEASING.md`) open with a double-click; an unsigned build makes macOS say the
-developer cannot be verified the first time — right-click the app → **Open** → **Open**.
-Windows: *More info → Run anyway*. There is no auto-update: a newer version is a new DMG
-dragged over the old one; your datasets are kept.
+The public v0.5.0 release contains the signed and notarized macOS builds. Windows builds are
+available to maintainers through GitHub Actions; Windows code signing is not configured.
+
+Download the DMG in Safari or another web browser, open it, and drag the app to *Applications*.
+If that folder requires an administrator password, create an `Applications` folder inside
+your home folder and copy the app there instead. Launch the copied app. Institutional device
+policies can still restrict application installation or execution.
+
+Share the release link rather than attaching the app to email. Some attachment-saving
+applications can add macOS sandbox-origin restrictions even to a correctly signed app.
+There is no auto-update: replace the app when you download a newer release; your datasets are kept.
 
 On first launch the app shows that it contains no data and offers **Import…**.
 
@@ -60,7 +64,9 @@ manifest (sources, checksums, cohorts, warnings, RUO notes) and the import log:
 - The dataset keeps its id across machines, so collaborators can refer to the same one; the
   same bundle cannot be imported twice unless the copy is removed first.
 
-Bundles carry RUO data: send them through an institutional channel, never with the app.
+Bundles carry RUO data: send them through an approved institutional channel. Never upload
+study data, dataset bundles, import logs, or screenshots containing study results to this
+public repository, its issues, or its releases.
 
 ## Command line (the same engine)
 
